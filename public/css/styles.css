@@ -1,0 +1,398 @@
+/* CSS Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* General styles for the body */
+.body-bg {
+  background-color: #f3f4f6; /* Light gray background */
+  margin: 0;
+  padding: 0;
+  font-family: sans-serif;
+  color: #1f2937; /* Dark text */
+}
+
+/* Main container */
+.main-container {
+  max-width: 1140px; /* Approximate container width */
+  margin: 0 auto; /* Center the main container */
+  padding: 32px 16px; /* Top and bottom padding: 32px; Left and right padding: 16px */
+}
+
+@media (max-width: 600px) {
+  .main-container {
+    padding-left: 8px;  /* Reduce left padding */
+    padding-right: 8px; /* Reduce right padding */
+  }
+}
+
+/* Page title */
+.page-title {
+  font-size: 2.25rem; /* Equivalent to text-4xl */
+  font-weight: bold;
+  color: #2d3748; /* Equivalent to text-gray-800 */
+  text-align: center;
+  margin-bottom: 2rem; /* Equivalent to mb-8 */
+}
+
+/* User list container */
+.user-list-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* Center child elements horizontally */
+  gap: 1rem;
+  width: 100%; /* Allow full width */
+  margin: 0 auto; /* Center the container */
+  padding: 0; /* Remove side padding */
+}
+
+@media (min-width: 640px) {
+  .user-list-container {
+    padding: 0;
+  }
+}
+
+/* Add User button container */
+.add-user-button-container {
+  text-align: center;
+  margin-top: 2rem; /* Equivalent to mt-8 */
+  padding: 0;
+}
+
+/* Add User button */
+.add-user-btn {
+  background-color: #fff;
+  color: #000;
+  font-weight: bold;
+  padding: 1rem 2rem;
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+  width: 100%;
+  display: block;
+}
+
+@media (min-width: 640px) {
+  .add-user-btn {
+    width: auto;
+    display: inline-block;
+  }
+}
+
+.add-user-btn:hover {
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: none; /* Hidden by default */
+  z-index: 50;
+  align-items: center; /* Center vertically */
+  justify-content: center; /* Center horizontally */
+}
+
+.modal-overlay.show {
+  display: flex;
+}
+
+/* Modal content */
+.modal-content {
+  background-color: #fff;
+  width: 100%;
+  max-width: 28rem; /* Approximate max-width */
+  margin: 0 auto;
+  border-radius: 8px; /* Equivalent to rounded-lg */
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem; /* Equivalent to p-6 */
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 0.75rem; /* Equivalent to pb-3 */
+}
+
+.modal-title {
+  font-size: 2rem; /* Equivalent to text-2xl */
+  font-weight: bold;
+}
+
+.close-modal-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.form-group {
+  margin-bottom: 1rem; /* Equivalent to mb-4 */
+}
+
+.form-group label {
+  display: block;
+  color: #4a5568; /* Equivalent to text-gray-700 */
+  margin-bottom: 0.5rem;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem; /* Equivalent to px-3 py-2 */
+  border: 1px solid #cbd5e0; /* Equivalent to border-gray-300 */
+  border-radius: 4px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.submit-btn {
+  background-color: #3182ce; /* Equivalent to bg-blue-500 */
+  color: #fff;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+}
+
+.submit-btn:hover {
+  background-color: #2b6cb0; /* Equivalent to hover:bg-blue-600 */
+}
+
+/* Ticket balance */
+.ticket-balance {
+  font-size: 2rem;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 1rem;
+  color: #000;
+}
+
+/* User card */
+.admin-user-card {
+  width: 100%;
+  max-width: 896px; /* Ensure the card doesn't exceed the container width */
+  margin: 0 auto; /* Center the card */
+  background-color: #fff;
+  border-radius: 10px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.3s ease-in-out;
+}
+
+@media (max-width: 600px) {
+  .admin-user-card {
+    width: 100%; /* Full width */
+    margin-left: 0; /* Remove left margin */
+    margin-right: 0; /* Remove right margin */
+  }
+}
+
+.admin-user-card:hover {
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+}
+
+.user-info-container {
+  display: flex;
+  justify-content: center; /* Center content horizontally */
+  align-items: center;
+  margin-bottom: 1rem;
+  position: relative; /* Allow absolute positioning of the remove button */
+}
+
+.user-name {
+  text-align: center;
+  flex-grow: 1;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #2d3748; /* Equivalent to text-gray-800 */
+}
+
+.remove-user-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  position: absolute; /* Position the button absolutely */
+  right: 0; /* Align it to the right */
+}
+
+.buttons-container {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.icon-container {
+  width: 48px; /* Set a fixed width */
+  height: 48px; /* Set a fixed height to make it square */
+  background-color: #fff; /* White background */
+  border-radius: 8px; /* Rounded corners */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Initial shadow */
+  transition: box-shadow 0.3s ease-in-out; /* Smooth transition for shadow */
+  display: flex; /* Use flexbox to center the icon */
+  align-items: center; /* Center vertically */
+  justify-content: center; /* Center horizontally */
+  cursor: pointer; /* Pointer cursor for clickable area */
+}
+
+.icon-container:hover {
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15); /* More intense shadow on hover */
+}
+
+.icon-container button {
+  background: transparent; /* Transparent background for the button */
+  border: none; /* Remove border */
+  width: 100%; /* Fill the container */
+  height: 100%; /* Fill the container */
+  display: flex; /* Center the icon */
+  align-items: center; /* Center the icon */
+  justify-content: center; /* Center the icon */
+  cursor: pointer; /* Pointer cursor for button */
+}
+
+.icon-svg {
+  width: 24px; /* Adjust size of the icon */
+  height: 24px; /* Adjust size of the icon */
+}
+
+.transaction-modal-content {
+  max-width: 48rem; /* Approximate to max-w-2xl */
+  overflow-y: auto;
+  max-height: 100%;
+}
+
+.transaction-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.transaction-table th,
+.transaction-table td {
+  border: 1px solid #cbd5e0; /* Equivalent to border-gray-300 */
+  padding: 0.5rem;
+  text-align: left;
+  color: #000;
+}
+
+.transaction-table th {
+  background-color: #edf2f7; /* Light background for headers */
+}
+
+/* Hidden class */
+.hidden {
+  display: none !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .add-user-btn {
+    padding: 0.6rem 1.2rem;
+    font-size: 1rem;
+    min-width: 140px;
+  }
+}
+
+/* Styles for the QR Code Button */
+.qr-code-btn {
+  background-color: #fff;
+  color: #000;
+  font-weight: bold;
+  padding: 1rem 2rem;
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+  width: 100%;
+  display: block;
+  margin-top: 1rem; /* Add margin if needed */
+}
+
+@media (min-width: 640px) {
+  .qr-code-btn {
+    width: auto;
+    display: inline-block;
+    margin-left: 1rem; /* Space between buttons */
+    margin-top: 0; /* Reset margin-top */
+  }
+}
+
+.qr-code-btn:hover {
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Login form specific styles */
+.login-form {
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 2rem;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.form-input {
+  font-size: 1.25rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.submit-btn {
+  font-size: 1.25rem;
+  padding: 0.75rem 1.5rem;
+}
+
+/* Add mobile-specific styles after default styles */
+@media (max-width: 600px) {
+  .main-container {
+    padding: 1rem;
+  }
+
+  .login-form {
+    max-width: 100%;
+    padding: 1rem;
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  .form-input {
+    font-size: 1rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .submit-btn {
+    font-size: 1rem;
+    padding: 0.5rem 1rem;
+  }
+}
+
+.copy-url-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.copy-btn {
+  padding: 0.5rem 1rem;
+  background-color: #3182ce;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.copy-btn:hover {
+  background-color: #2b6cb0;
+}
+ 

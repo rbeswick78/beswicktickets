@@ -1,0 +1,30 @@
+{
+  "name": "beswicktickets",
+  "version": "1.0.0",
+  "description": "Beswick Tickets Application",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "npx nodemon app.js"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^6.6.0",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.21.1",
+    "express-session": "^1.18.1",
+    "helmet": "^8.0.0",
+    "mongoose": "^8.8.0",
+    "passport": "^0.7.0",
+    "passport-local": "^1.0.0",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1",
+    "tailwindcss": "^3.4.15",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
+

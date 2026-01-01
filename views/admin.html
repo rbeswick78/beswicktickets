@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Admin - Dashboard</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="body-bg">
+
+  <div class="main-container">
+    <h1 class="page-title">BESWICK TICKETS - ADMIN</h1>
+
+    <div id="admin-user-list" class="user-list-container">
+      <!-- User list will be populated here by JavaScript -->
+    </div>
+
+    <!-- Button Container -->
+    <div class="add-user-button-container">
+      <button id="open-add-user-modal" class="add-user-btn">
+        Add New User
+      </button>
+      <button id="open-qr-code-modal" class="qr-code-btn">
+        QR Code
+      </button>
+    </div>
+  </div>
+
+  <!-- Add User Modal -->
+  <div id="add-user-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <!-- Close Modal Button -->
+      <div class="modal-header">
+        <p class="modal-title">Create New User</p>
+      </div>
+      <form id="create-user-form">
+        <div class="form-group">
+          <label>Username:</label>
+          <input type="text" name="username" required class="form-input"/>
+        </div>
+        <div class="form-group">
+          <label>Password:</label>
+          <input type="password" name="password" required class="form-input"/>
+        </div>
+        <div class="form-group">
+          <label>Role:</label>
+          <select name="role" class="form-input">
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="submit-btn">Create User</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Tickets Modal -->
+  <div id="ticket-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <!-- Modal Title -->
+      <div class="modal-header">
+        <p id="add-tickets-title" class="modal-title">Add Tickets</p>
+      </div>
+      <form id="add-tickets-form">
+        <div class="form-group">
+          <label>Quantity:</label>
+          <input type="number" name="quantity" required class="form-input"/>
+        </div>
+        <div class="form-group">
+          <label>Reason:</label>
+          <textarea name="reason" class="form-input"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="submit-btn">Add Tickets</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Remove Tickets Modal -->
+  <div id="remove-ticket-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <!-- Modal Title -->
+      <div class="modal-header">
+        <p id="remove-tickets-title" class="modal-title">Remove Tickets</p>
+      </div>
+      <form id="remove-tickets-form">
+        <div class="form-group">
+          <label>Quantity:</label>
+          <input type="number" name="quantity" required class="form-input"/>
+        </div>
+        <div class="form-group">
+          <label>Reason:</label>
+          <textarea name="reason" class="form-input"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="submit-btn">Remove Tickets</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Transaction Modal -->
+  <div id="transaction-modal" class="modal-overlay hidden">
+    <div class="modal-content transaction-modal-content">
+      <!-- Modal Title -->
+      <div class="modal-header">
+        <p id="transaction-modal-title" class="modal-title">User Transactions</p>
+      </div>
+      <table id="transaction-table" class="transaction-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Amount</th>
+            <th>Balance</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Transactions will be populated here -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- QR Code Modal -->
+  <div id="qr-code-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <!-- Modal Header -->
+      <div class="modal-header">
+        <p class="modal-title">Generate Ticket Redemption QR Code</p>
+      </div>
+      <!-- Modal Body -->
+      <form id="generate-qr-form">
+        <div class="form-group">
+          <label>Select User:</label>
+          <select name="userId" required class="form-input">
+            <!-- User options will be populated dynamically -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Ticket Amount:</label>
+          <input type="number" name="quantity" required class="form-input" min="1"/>
+        </div>
+        <div class="form-group">
+          <label>Reason:</label>
+          <textarea name="reason" class="form-input"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="submit-btn">Generate</button>
+        </div>
+      </form>
+      <!-- QR Code Result -->
+      <div id="qr-code-result" class="qr-code-result hidden">
+        <h3>QR Code for Ticket Redemption</h3>
+        <img id="qr-code-image" src="" alt="QR Code Image" />
+        <p>Share this QR code with the user for redemption.</p>
+        <p>Redemption URL:</p>
+        <div class="copy-url-container">
+          <input id="qr-code-url" type="text" readonly class="form-input" />
+          <button id="copy-url-btn" class="copy-btn">Copy URL</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Include scripts -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/adminUserList.js"></script>
+  <script src="/js/createUser.js"></script>
+  <script src="/js/addTickets.js"></script>
+  <script src="/js/removeTickets.js"></script>
+  <script src="/js/transactionModal.js"></script>
+  <script src="/js/generateQR.js"></script>
+</body>
+</html>

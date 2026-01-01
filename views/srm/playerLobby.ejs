@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SRM - Player Lobby</title>
+  <link rel="stylesheet" href="/css/srm.css">
+</head>
+<body>
+  <h1>Steal Ryan's Money - Player Lobby</h1>
+
+  <section>
+    <h2>Join an Existing Game</h2>
+    <!-- You can list active games or allow entering a code -->
+    <ul>
+      <% if (activeGames && activeGames.length) { %>
+        <% activeGames.forEach(game => { %>
+          <li>
+            Game Code: <%= game.code %>
+            - Dealer: <%= game.dealer.username %>
+            <form action="/srm/join-as-player" method="POST" style="display:inline;">
+              <input type="hidden" name="gameCode" value="<%= game.code %>">
+              <button type="submit">Join as Player</button>
+            </form>
+          </li>
+        <% }) %>
+      <% } else { %>
+        <li>No active games.</li>
+      <% } %>
+    </ul>
+  </section>
+  
+</body>
+</html>

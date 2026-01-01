@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SRM - Dealer Lobby</title>
+  <link rel="stylesheet" href="/css/srm.css">
+</head>
+<body>
+  <h1>Steal Ryan's Money - Dealer Lobby</h1>
+
+  <section>
+    <h2>Create a New Game</h2>
+    <form id="create-game-form">
+      <button type="submit">Create New Game</button>
+    </form>
+    <div id="new-game-result"></div>
+  </section>
+  
+  <section>
+    <h2>Active Games</h2>
+    <!-- This list is populated server-side with active games -->
+    <ul>
+      <% if (activeGames && activeGames.length) { %>
+        <% activeGames.forEach(game => { %>
+          <li>
+            Game Code: <%= game.code %>
+            - Dealer: <%= game.dealer.username %> 
+            <form action="/srm/join-game-dealer" method="POST" style="display:inline;">
+              <input type="hidden" name="gameId" value="<%= game._id %>">
+              <button type="submit">Become Dealer</button>
+            </form>
+          </li>
+        <% }) %>
+      <% } else { %>
+        <li>No active games.</li>
+      <% } %>
+    </ul>
+  </section>
+
+  <script src="/js/dealerLobby.js"></script>
+</body>
+</html>

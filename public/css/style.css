@@ -1,0 +1,220 @@
+/* Global box-sizing reset */
+html {
+  box-sizing: border-box;
+}
+
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+
+/* General styles */
+body {
+  background-color: #1a202c; /* Dark background */
+  color: #f7fafc; /* Light text */
+  font-family: sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  min-height: 100vh; /* Fallback */
+  min-height: calc(var(--vh, 1vh) * 100);
+  padding: 2rem; /* Adjusted padding */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center; /* Center vertically on desktop */
+}
+
+#page-title {
+  width: 100%;
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.user-containers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  justify-content: center;
+  align-items: stretch;
+  width: 100%;
+}
+
+.index-user-card {
+  background-color: #000;
+  border: 4px solid #d69e2e; /* Yellow border */
+  padding: 2rem; /* Increased padding for taller cards */
+  flex: 1 1 calc(33.333% - 2rem); /* Three cards per row */
+  min-width: 250px;
+  max-width: calc(33.333% - 2rem);
+  box-sizing: border-box; /* Include padding and border in width calculations */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 10px; /* Rounded corners */
+}
+
+.username-display {
+  margin-bottom: 2rem; /* Fixed spacing between username and ticket display */
+}
+
+.ticket-display {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  margin-top: auto;
+  margin-bottom: auto;
+  background-color: #111827; /* Updated gray color */
+  width: 60%; /* Reduced from 100% to 60% */
+  padding: 3rem 0; /* Increased padding for taller container on desktop */
+  border-radius: 5px;
+}
+
+.dot-matrix {
+  display: flex;
+  gap: 0.2rem;
+  justify-content: center;
+}
+
+.dot-matrix-char {
+  display: grid;
+  grid-template-columns: repeat(5, auto);
+  gap: 1px;
+}
+
+.dot-matrix-dot {
+  width: 5px;  /* Reduced size */
+  height: 5px; /* Reduced size */
+  border-radius: 50%;
+}
+
+.dot-on {
+  background-color: #d69e2e; /* Yellow dots */
+}
+
+.dot-off {
+  background-color: #2d3748; /* Original dark gray for off dots */
+}
+
+@media (max-width: 900px) and (min-width: 601px) {
+  .index-user-card {
+    flex: 1 1 calc(50% - 2rem); /* Two cards per row on medium screens */
+    max-width: calc(50% - 2rem);
+  }
+}
+
+@media (max-width: 600px) {
+  .user-containers {
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  .index-user-card {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+    margin: 0 0 2rem 0;
+    padding: 1.5rem; /* Reduced padding for mobile */
+  }
+
+  .ticket-display {
+    padding: 1.5rem 0; /* Reduced padding for mobile */
+    /* width remains 60% on mobile */
+  }
+
+  .username-display {
+    margin-bottom: 1.5rem; /* Reduced spacing for mobile */
+  }
+}
+
+/* Default dot size (tablet) */
+.dot-matrix-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+/* Desktop (larger dots) */
+@media (min-width: 901px) {
+  .dot-matrix-dot {
+    width: 6.25px;  /* 25% larger than 5px */
+    height: 6.25px;
+    border-radius: 50%;
+  }
+
+  .dot-matrix {
+    gap: 0.25rem; /* Slightly larger gap for desktop */
+  }
+}
+
+/* Mobile (smaller dots) */
+@media (max-width: 600px) {
+  .dot-matrix-dot {
+    width: 3.75px;  /* 25% smaller than 5px */
+    height: 3.75px;
+    border-radius: 50%;
+  }
+
+  .dot-matrix {
+    gap: 0.15rem; /* Slightly smaller gap for mobile */
+  }
+}
+
+/* Mobile adjustments */
+@media (max-width: 600px) {
+  .container {
+    padding: 1rem;
+    justify-content: center;
+  }
+
+  #page-title {
+    margin-bottom: 2rem;
+  }
+
+  .user-containers {
+    gap: 1rem;
+  }
+
+  .index-user-card {
+    margin: 0 0 1rem 0;
+    padding: 1.5rem;
+  }
+}
+
+/* Desktop adjustments */
+@media (min-width: 901px) {
+  .index-user-card {
+    flex: 1 1 calc(30% - 2rem); /* Reduced from 33.333% to 30% */
+    max-width: calc(30% - 2rem); /* Reduced from 33.333% to 30% */
+  }
+}
+
+/* Add styles for the enable sound button */
+#enable-sound {
+  background-color: #d69e2e; /* Yellow background */
+  color: #1a202c; /* Dark text */
+  border: none;
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 5px;
+  margin: 20px; /* Add some margin for spacing */
+  display: block; /* Ensure it's a block element */
+  text-align: center;
+}
+
+#enable-sound:hover {
+  background-color: #b7791f; /* Darker yellow on hover */
+}
+
+/* Style for the ENTER dot matrix */
+#enter-button {
+  cursor: pointer; /* Make it clear that it's clickable */
+  margin: 20px 0; /* Add some margin for spacing */
+  display: flex;
+  justify-content: center;
+}

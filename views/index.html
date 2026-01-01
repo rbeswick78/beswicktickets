@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Beswick Tickets</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="manifest" href="/manifest.json">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+  <div class="container">
+    <h1 id="page-title"></h1>
+    <div id="enter-button" class="dot-matrix"></div>
+    <div id="user-containers" class="user-containers" style="display: none;"></div>
+  </div>
+  
+  <!-- Include any non-module scripts first -->
+  <script src="/js/viewportHeight.js"></script>
+  <!-- Include Socket.IO (non-module script) -->
+  <script src="/socket.io/socket.io.js"></script>
+  
+  <!-- Include your main JavaScript module -->
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
