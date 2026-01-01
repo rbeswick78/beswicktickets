@@ -91,12 +91,8 @@ function createChipElement(userId, amount, spotId) {
   if (userId === currentUserId) {
     chipEl.addEventListener('click', (evt) => {
       evt.stopPropagation();
-      socket.emit('removeBet', {
-        gameId,
-        userId: currentUserId,
-        spotId,
-        amount: 1
-      });
+      // Use batch queue for removal (negative amount)
+      queueBet(spotId, -1);
     });
   }
   return chipEl;
@@ -573,9 +569,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (existingChip) {
       const currentAmount = parseInt(existingChip.dataset.amount || '0', 10);
       const newAmount = currentAmount + amount;
-      existingChip.dataset.amount = newAmount;
-      existingChip.textContent = newAmount;
-    } else {
+      
+      if (newAmount <= 0) {
+        existingChip.remove();
+      } else {
+        existingChip.dataset.amount = newAmount;
+        existingChip.textContent = newAmount;
+      }
+    } else if (amount > 0) {
+      // Only create if positive
       const chipEl = createChipElement(userId, amount, spotId);
       targetEl.appendChild(chipEl);
     }

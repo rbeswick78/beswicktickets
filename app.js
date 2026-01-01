@@ -211,18 +211,23 @@ io.on('connection', (socket) => {
         const user = await User.findById(userId);
         if (!user) return;
 
-        // Calculate total amount
+        // Calculate total net amount (can be negative if removing bets)
         const totalAmount = bets.reduce((sum, b) => sum + (b.amount || 0), 0);
 
-        // Check user has enough tickets
-        if (user.ticketBalance < totalAmount) {
-          socket.emit('betError', { message: 'Insufficient tickets for these bets.' });
-          return;
+        // Transaction logic on User
+        if (totalAmount > 0) {
+            // SPEND tickets
+            if (user.ticketBalance < totalAmount) {
+                socket.emit('betError', { message: 'Insufficient tickets for these bets.' });
+                return;
+            }
+            await user.removeTickets(totalAmount, `Bets placed (Batch) - Game #${game.code}`);
+        } else if (totalAmount < 0) {
+            // REFUND tickets (removal)
+            // Use Math.abs because addTickets expects positive quantity
+            await user.addTickets(Math.abs(totalAmount), `Bets removed (Batch) - Game #${game.code}`);
         }
-
-        // Deduct from user first (atomic-like check done above, assuming single user thread per socket or sufficient funds)
-        // If we want to be super safe, we can optimize later, but serialize helps.
-        await user.removeTickets(totalAmount, `Bets placed (Batch) - Game #${game.code}`);
+        // If totalAmount === 0, no wallet change needed (just reallocating chips internally if supported)
 
         try {
           // Update game bets
@@ -231,19 +236,38 @@ io.on('connection', (socket) => {
               const existingBet = game.bets.find(
                   (b) => b.userId.toString() === userId && b.spotId === spotId
               );
+              
               if (existingBet) {
                   existingBet.amount += amount;
               } else {
-                  game.bets.push({ userId, spotId, amount });
+                  // Only push if positive amount (shouldn't create new bet with negative)
+                  if (amount > 0) {
+                      game.bets.push({ userId, spotId, amount });
+                  }
               }
           }
 
+          // Cleanup: Remove any bets that have dropped to <= 0
+          game.bets = game.bets.filter(b => b.amount > 0);
+
           await game.save();
         } catch (saveError) {
-          // If game save fails, refund the user
-          console.error('Game save failed, refunding user:', saveError);
-          await user.addTickets(totalAmount, `Refund - Game #${game.code} Save Failed`);
-          throw saveError; // Re-throw to be caught by outer catch
+          // If game save fails, reverse the user transaction
+          console.error('Game save failed, reversing user transaction:', saveError);
+          
+          if (totalAmount > 0) {
+              // We removed tickets, so add them back
+              await user.addTickets(totalAmount, `Refund - Game #${game.code} Save Failed`);
+          } else if (totalAmount < 0) {
+              // We added tickets, so remove them back (careful of balance check, but should be fine)
+              // Note: This is rare. If removeTickets fails here, data is slightly out of sync.
+              try {
+                  await user.removeTickets(Math.abs(totalAmount), `Reversal - Game #${game.code} Save Failed`);
+              } catch (reversalErr) {
+                  console.error('Critial: Failed to reverse refund', reversalErr);
+              }
+          }
+          throw saveError;
         }
 
         // Emit batch confirmation
@@ -341,49 +365,52 @@ io.on('connection', (socket) => {
   socket.on('removeBet', async (data) => {
     const { gameId, userId, spotId, amount } = data;
 
-    try {
-      const game = await SrmGame.findById(gameId);
-      if (!game) return;
+    // Use serialization for legacy removeBet as well
+    runSerialized(gameId, async () => {
+        try {
+          const game = await SrmGame.findById(gameId);
+          if (!game) return;
 
-      // Enforce: betting must be open
-      if (game.roundStatus !== 'betting') {
-        socket.emit('betError', {
-          message: 'Bet removals are not allowed after cards are dealt.'
-        });
-        return;
-      }
+          // Enforce: betting must be open
+          if (game.roundStatus !== 'betting') {
+            socket.emit('betError', {
+              message: 'Bet removals are not allowed after cards are dealt.'
+            });
+            return;
+          }
 
-      const foundBet = game.bets.find(
-        (b) => b.userId.toString() === userId && b.spotId === spotId
-      );
-      if (!foundBet) return;
+          const foundBet = game.bets.find(
+            (b) => b.userId.toString() === userId && b.spotId === spotId
+          );
+          if (!foundBet) return;
 
-      foundBet.amount -= amount;
-      if (foundBet.amount <= 0) {
-        game.bets = game.bets.filter((b) => b !== foundBet);
-      }
+          foundBet.amount -= amount;
+          if (foundBet.amount <= 0) {
+            game.bets = game.bets.filter((b) => b !== foundBet);
+          }
 
-      await game.save();
+          await game.save();
 
-      io.to(`srmGame_${gameId}`).emit('betRemoved', {
-        userId,
-        spotId,
-        newAmount: foundBet.amount <= 0 ? 0 : foundBet.amount,
-      });
+          io.to(`srmGame_${gameId}`).emit('betRemoved', {
+            userId,
+            spotId,
+            newAmount: foundBet.amount <= 0 ? 0 : foundBet.amount,
+          });
 
-      // Refund tickets to user
-      const user = await User.findById(userId);
-      if (user) {
-        await user.addTickets(amount, `Bet removed - Game #${game.code}`);
-        io.emit('ticketUpdate', {
-          userId: user._id,
-          username: user.username,
-          ticketBalance: user.ticketBalance,
-        });
-      }
-    } catch (error) {
-      console.error('Error removing bet:', error);
-    }
+          // Refund tickets to user
+          const user = await User.findById(userId);
+          if (user) {
+            await user.addTickets(amount, `Bet removed - Game #${game.code}`);
+            io.emit('ticketUpdate', {
+              userId: user._id,
+              username: user.username,
+              ticketBalance: user.ticketBalance,
+            });
+          }
+        } catch (error) {
+          console.error('Error removing bet:', error);
+        }
+    });
   });
 });
 
