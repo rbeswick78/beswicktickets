@@ -619,9 +619,9 @@ document.addEventListener('DOMContentLoaded', () => {
         finishedDealing = false;
         payoutResultsCache = null;
 
-        socket.emit('dealCards', { gameId });
+        socket.emit('dealCards', { gameId, userId: currentUserId });
       } else {
-        socket.emit('clearRound', { gameId });
+        socket.emit('clearRound', { gameId, userId: currentUserId });
       }
     });
   }

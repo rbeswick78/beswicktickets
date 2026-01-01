@@ -218,40 +218,66 @@ io.on('connection', (socket) => {
         const user = await User.findById(userId);
         if (!user) return;
 
-        // Calculate total net amount (can be negative if removing bets)
-        const totalAmount = bets.reduce((sum, b) => sum + (b.amount || 0), 0);
+        // FIX: Validate and calculate actual amounts based on existing bets
+        // This prevents refunding more than what was actually bet
+        let validatedAddAmount = 0;
+        let validatedRefundAmount = 0;
+        const validatedBets = [];
 
-        // Transaction logic on User
-        if (totalAmount > 0) {
-            // SPEND tickets
-            if (user.ticketBalance < totalAmount) {
-                socket.emit('betError', { message: 'Insufficient tickets for these bets.' });
-                return;
+        for (const bet of bets) {
+          const { spotId, amount } = bet;
+          const existingBet = game.bets.find(
+            (b) => b.userId.toString() === userId && b.spotId === spotId
+          );
+
+          if (amount > 0) {
+            // Adding chips - validate user has enough balance (checked later)
+            validatedAddAmount += amount;
+            validatedBets.push({ spotId, amount });
+          } else if (amount < 0) {
+            // Removing chips - only allow removal up to existing bet amount
+            const existingAmount = existingBet ? existingBet.amount : 0;
+            const requestedRemoval = Math.abs(amount);
+            const actualRemoval = Math.min(requestedRemoval, existingAmount);
+
+            if (actualRemoval > 0) {
+              validatedRefundAmount += actualRemoval;
+              validatedBets.push({ spotId, amount: -actualRemoval });
             }
-            await user.removeTickets(totalAmount, `Bets placed (Batch) - Game #${game.code}`);
-        } else if (totalAmount < 0) {
-            // REFUND tickets (removal)
-            // Use Math.abs because addTickets expects positive quantity
-            await user.addTickets(Math.abs(totalAmount), `Bets removed (Batch) - Game #${game.code}`);
+            // Ignore removal requests for bets that don't exist or exceed bet amount
+          }
         }
-        // If totalAmount === 0, no wallet change needed (just reallocating chips internally if supported)
+
+        const netAmount = validatedAddAmount - validatedRefundAmount;
+
+        // Transaction logic on User with validated amounts
+        if (netAmount > 0) {
+          // SPEND tickets
+          if (user.ticketBalance < netAmount) {
+            socket.emit('betError', { message: 'Insufficient tickets for these bets.' });
+            return;
+          }
+          await user.removeTickets(netAmount, `Bets placed (Batch) - Game #${game.code}`);
+        } else if (netAmount < 0) {
+          // REFUND tickets (validated removal amount)
+          await user.addTickets(Math.abs(netAmount), `Bets removed (Batch) - Game #${game.code}`);
+        }
+        // If netAmount === 0, no wallet change needed
 
         try {
-          // Update game bets
-          for (const bet of bets) {
-              const { spotId, amount } = bet;
-              const existingBet = game.bets.find(
-                  (b) => b.userId.toString() === userId && b.spotId === spotId
-              );
-              
-              if (existingBet) {
-                  existingBet.amount += amount;
-              } else {
-                  // Only push if positive amount (shouldn't create new bet with negative)
-                  if (amount > 0) {
-                      game.bets.push({ userId, spotId, amount });
-                  }
-              }
+          // Update game bets with validated amounts
+          for (const bet of validatedBets) {
+            const { spotId, amount } = bet;
+            const existingBet = game.bets.find(
+              (b) => b.userId.toString() === userId && b.spotId === spotId
+            );
+
+            if (existingBet) {
+              existingBet.amount += amount;
+            } else if (amount > 0) {
+              // Only push if positive amount
+              game.bets.push({ userId, spotId, amount });
+            }
           }
 
           // Cleanup: Remove any bets that have dropped to <= 0
@@ -261,27 +287,26 @@ io.on('connection', (socket) => {
         } catch (saveError) {
           // If game save fails, reverse the user transaction
           console.error('Game save failed, reversing user transaction:', saveError);
-          
-          if (totalAmount > 0) {
-              // We removed tickets, so add them back
-              await user.addTickets(totalAmount, `Refund - Game #${game.code} Save Failed`);
-          } else if (totalAmount < 0) {
-              // We added tickets, so remove them back (careful of balance check, but should be fine)
-              // Note: This is rare. If removeTickets fails here, data is slightly out of sync.
-              try {
-                  await user.removeTickets(Math.abs(totalAmount), `Reversal - Game #${game.code} Save Failed`);
-              } catch (reversalErr) {
-                  console.error('Critial: Failed to reverse refund', reversalErr);
-              }
+
+          if (netAmount > 0) {
+            // We removed tickets, so add them back
+            await user.addTickets(netAmount, `Refund - Game #${game.code} Save Failed`);
+          } else if (netAmount < 0) {
+            // We added tickets, so remove them back
+            try {
+              await user.removeTickets(Math.abs(netAmount), `Reversal - Game #${game.code} Save Failed`);
+            } catch (reversalErr) {
+              console.error('Critical: Failed to reverse refund', reversalErr);
+            }
           }
           throw saveError;
         }
 
-        // Emit batch confirmation
-        const confirmedBets = bets.map(b => ({
-            userId,
-            spotId: b.spotId,
-            amount: b.amount
+        // Emit batch confirmation with validated bets
+        const confirmedBets = validatedBets.map(b => ({
+          userId,
+          spotId: b.spotId,
+          amount: b.amount
         }));
 
         io.to(`srmGame_${gameId}`).emit('betPlacedBatch', { bets: confirmedBets });
@@ -301,13 +326,26 @@ io.on('connection', (socket) => {
 
   // DEAL CARDS
   socket.on('dealCards', async (data) => {
-    const { gameId } = data;
-    const deck = getShuffledDeckOf54();
-    const chosenCards = deck.slice(0, 3);
+    const { gameId, userId } = data;
 
     try {
       const game = await SrmGame.findById(gameId);
       if (!game) return;
+
+      // FIX: Verify the user is the dealer
+      if (!userId || game.dealer.toString() !== userId) {
+        socket.emit('betError', { message: 'Only the dealer can deal cards.' });
+        return;
+      }
+
+      // FIX: Only allow dealing when round is in betting status
+      if (game.roundStatus !== 'betting') {
+        socket.emit('betError', { message: 'Cards have already been dealt for this round.' });
+        return;
+      }
+
+      const deck = getShuffledDeckOf54();
+      const chosenCards = deck.slice(0, 3);
 
       // Set roundStatus = "resultsPending"
       game.dealtCards = chosenCards;
@@ -353,10 +391,22 @@ io.on('connection', (socket) => {
 
   // CLEAR ROUND
   socket.on('clearRound', async (data) => {
-    const { gameId } = data;
+    const { gameId, userId } = data;
     try {
       const game = await SrmGame.findById(gameId);
       if (!game) return;
+
+      // FIX: Verify the user is the dealer
+      if (!userId || game.dealer.toString() !== userId) {
+        socket.emit('betError', { message: 'Only the dealer can clear the round.' });
+        return;
+      }
+
+      // FIX: Only allow clearing when round is in results status
+      if (game.roundStatus !== 'results' && game.roundStatus !== 'resultsPending') {
+        socket.emit('betError', { message: 'Cannot clear round during betting.' });
+        return;
+      }
 
       // Reset the round
       game.roundStatus = 'betting';
