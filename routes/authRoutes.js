@@ -27,6 +27,10 @@ router.post('/login', (req, res, next) => {
     }
 
     console.log('3C. User found:', user.username);
+    // Save returnTo before logIn regenerates the session
+    const savedReturnTo = req.session.returnTo;
+    console.log('Saved returnTo before logIn:', savedReturnTo);
+    
     req.logIn(user, (loginErr) => {
       console.log('4. Inside logIn callback');
       if (loginErr) {
@@ -35,11 +39,9 @@ router.post('/login', (req, res, next) => {
       }
 
       console.log('4B. Login successful');
-      console.log('Session returnTo:', req.session.returnTo);
-      // Always check returnTo first, fall back to a role-appropriate default
-      const redirectTo = req.session.returnTo || (user.role === 'admin' ? '/admin' : '/srm');
+      // Use saved returnTo since session may have been regenerated
+      const redirectTo = savedReturnTo || (user.role === 'admin' ? '/admin' : '/srm');
       console.log('Redirecting to:', redirectTo);
-      delete req.session.returnTo;
       return res.redirect(redirectTo);
     });
   })(req, res, next);

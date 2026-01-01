@@ -754,6 +754,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const sidebar = document.getElementById('player-sidebar');
 
   if (hudToggle && sidebar) {
+      // Open the sidebar by default
+      sidebar.classList.add('open');
+      
       hudToggle.addEventListener('click', () => {
           sidebar.classList.add('open');
       });
