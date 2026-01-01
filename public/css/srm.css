@@ -300,7 +300,8 @@ h1, h2, h3, .srm-title {
   top: 0;
   left: -320px;
   width: 300px;
-  height: calc(100vh - var(--action-bar-height) - env(safe-area-inset-bottom, 0px));
+  height: auto;
+  max-height: calc(100vh - var(--action-bar-height) - env(safe-area-inset-bottom, 0px) - 8rem);
   background: rgba(0, 0, 0, 0.9);
   border-right: 2px solid var(--gold-accent);
   border-bottom: 2px solid var(--gold-accent);
@@ -335,7 +336,7 @@ h1, h2, h3, .srm-title {
 }
 
 .balance-list {
-  max-height: calc(100vh - var(--action-bar-height) - env(safe-area-inset-bottom, 0px) - 100px);
+  max-height: calc(100vh - var(--action-bar-height) - env(safe-area-inset-bottom, 0px) - 12rem);
   overflow-y: auto;
 }
 
@@ -386,6 +387,7 @@ h1, h2, h3, .srm-title {
   border-radius: 6px;
   padding: 4px 12px;
   min-width: 70px;
+  margin-right: 1.5rem;
   box-shadow: 
     0 0 10px rgba(212, 175, 55, 0.3),
     inset 0 1px 3px rgba(0, 0, 0, 0.8),
@@ -621,6 +623,7 @@ h1, h2, h3, .srm-title {
   .balance-led {
     min-width: 55px;
     padding: 3px 8px;
+    margin-right: 1rem;
   }
   
   .led-label {
