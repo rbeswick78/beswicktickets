@@ -20,7 +20,10 @@ let longShotAudio;
 
 // Long shot celebration state
 let longShotWinsCache = null;
-let longShotCelebrationActive = false; 
+let longShotCelebrationActive = false;
+
+// Chip selector state
+let selectedBetAmount = 1; 
 
 /**
  * A map to store userId -> color
@@ -183,8 +186,8 @@ function createChipElement(userId, amount, spotId) {
   if (userId === currentUserId) {
     chipEl.addEventListener('click', (evt) => {
       evt.stopPropagation();
-      // Use batch queue for removal (negative amount)
-      queueBet(spotId, -1);
+      // Use batch queue for removal (negative selected chip amount)
+      queueBet(spotId, -selectedBetAmount);
     });
   }
   return chipEl;
@@ -769,6 +772,42 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // -------------------------------------------------------------
+  //  Chip Selector Logic
+  // -------------------------------------------------------------
+  const chipOptions = document.querySelectorAll('.chip-option');
+  const bettingContainers = document.querySelectorAll('.betting-container');
+  
+  /**
+   * Update the cursor class on all betting containers based on selected chip
+   */
+  function updateChipCursor(value) {
+    bettingContainers.forEach(container => {
+      // Remove all cursor classes
+      container.classList.remove('chip-cursor-1', 'chip-cursor-5', 'chip-cursor-10', 'chip-cursor-20', 'chip-cursor-50');
+      // Add the new cursor class
+      container.classList.add(`chip-cursor-${value}`);
+    });
+  }
+  
+  // Initialize cursor with default chip
+  updateChipCursor(1);
+  
+  // Handle chip selection
+  chipOptions.forEach(chip => {
+    chip.addEventListener('click', () => {
+      // Update selected state
+      chipOptions.forEach(c => c.classList.remove('selected'));
+      chip.classList.add('selected');
+      
+      // Update bet amount
+      selectedBetAmount = parseInt(chip.dataset.value, 10);
+      
+      // Update cursor
+      updateChipCursor(selectedBetAmount);
+    });
+  });
+
+  // -------------------------------------------------------------
   //  Initialize and load audio files
   // -------------------------------------------------------------
   placeYourBetsAudio = new Audio('/sound/place-your-bets.mp3');
@@ -953,8 +992,8 @@ document.addEventListener('DOMContentLoaded', () => {
     area.addEventListener('click', () => {
       if (currentRoundStatus !== 'betting') return;
       const spotId = area.getAttribute('data-spot-id');
-      // Use batch queue instead of direct emit
-      queueBet(spotId, 1);
+      // Use batch queue with selected chip amount
+      queueBet(spotId, selectedBetAmount);
     });
   });
 

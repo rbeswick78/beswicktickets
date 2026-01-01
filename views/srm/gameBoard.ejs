@@ -187,6 +187,15 @@
             <span id="my-balance-amount" class="amount">Loading...</span>
         </div>
         
+        <!-- Chip Selector -->
+        <div class="chip-selector">
+            <div class="chip-option selected" data-value="1">1</div>
+            <div class="chip-option" data-value="5">5</div>
+            <div class="chip-option" data-value="10">10</div>
+            <div class="chip-option" data-value="20">20</div>
+            <div class="chip-option" data-value="50">50</div>
+        </div>
+        
         <% if (game.dealer._id.toString() === currentUserId) { %>
             <div class="dealer-controls">
                 <button id="deal-button" class="dealer-button">Deal</button>
