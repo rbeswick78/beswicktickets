@@ -61,6 +61,13 @@ function renderUserList(users) {
     showTransactionsBtn.innerHTML = '<img src="/svg/history.svg" alt="Transactions" class="icon-svg">';
     showTransactionsBtn.title = 'Transactions';
 
+    const resetPasswordBtn = document.createElement('button');
+    resetPasswordBtn.className = 'reset-password-btn';
+    resetPasswordBtn.dataset.userId = user._id;
+    resetPasswordBtn.dataset.username = user.username;
+    resetPasswordBtn.innerHTML = '<img src="/svg/lock.svg" alt="Reset Password" class="icon-svg">';
+    resetPasswordBtn.title = 'Reset Password';
+
     // Wrap each button in an icon container
     const addTicketsContainer = document.createElement('div');
     addTicketsContainer.className = buttonClasses;
@@ -74,9 +81,14 @@ function renderUserList(users) {
     showTransactionsContainer.className = buttonClasses;
     showTransactionsContainer.appendChild(showTransactionsBtn);
 
+    const resetPasswordContainer = document.createElement('div');
+    resetPasswordContainer.className = buttonClasses;
+    resetPasswordContainer.appendChild(resetPasswordBtn);
+
     buttonsContainer.appendChild(addTicketsContainer);
     buttonsContainer.appendChild(removeTicketsContainer);
     buttonsContainer.appendChild(showTransactionsContainer);
+    buttonsContainer.appendChild(resetPasswordContainer);
 
     userCard.appendChild(userInfoContainer);
     userCard.appendChild(ticketTotal);
@@ -136,6 +148,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const username = button.dataset.username;
       // Open the Transaction Modal
       openTransactionModal(userId, username);
+    } else if (event.target.closest('.reset-password-btn')) {
+      // Handle "Reset Password" button click
+      const button = event.target.closest('.reset-password-btn');
+      const userId = button.dataset.userId;
+      const username = button.dataset.username;
+      // Open the Reset Password Modal
+      if (typeof openResetPasswordModal === 'function') {
+        openResetPasswordModal(userId, username);
+      } else {
+        console.error('openResetPasswordModal is not defined');
+      }
     }
   });
 });

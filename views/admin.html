@@ -166,6 +166,24 @@
     </div>
   </div>
 
+  <!-- Reset Password Modal -->
+  <div id="reset-password-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <p id="reset-password-title" class="modal-title">Reset Password</p>
+      </div>
+      <form id="reset-password-form">
+        <div class="form-group">
+          <label>New Password:</label>
+          <input type="password" name="newPassword" required class="form-input" minlength="6"/>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="submit-btn">Reset Password</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Include scripts -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/adminUserList.js"></script>
@@ -174,5 +192,6 @@
   <script src="/js/removeTickets.js"></script>
   <script src="/js/transactionModal.js"></script>
   <script src="/js/generateQR.js"></script>
+  <script src="/js/resetPasswordAdmin.js"></script>
 </body>
 </html>

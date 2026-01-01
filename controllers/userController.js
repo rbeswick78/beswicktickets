@@ -184,6 +184,32 @@ class UserController {
     }
   }
 
+  // Method to reset a user's password
+  async resetPassword(req, res) {
+    try {
+      const { userId, newPassword } = req.body;
+
+      if (!newPassword || newPassword.length < 6) {
+        return res.status(400).send('Password must be at least 6 characters long');
+      }
+
+      const user = await User.findById(userId);
+
+      if (!user) {
+        return res.status(404).send('User not found');
+      }
+
+      // Update password (pre-save hook will hash it)
+      user.password = newPassword;
+      await user.save();
+
+      res.status(200).send('Password reset successfully');
+    } catch (error) {
+      console.error('Error resetting password:', error.message);
+      res.status(500).send(`Error resetting password: ${error.message}`);
+    }
+  }
+
   // Existing methods...
 }
 

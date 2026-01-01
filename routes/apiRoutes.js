@@ -29,4 +29,12 @@ router.delete(
   userController.deleteUser.bind(userController)
 );
 
+// API endpoint to reset user password
+router.post(
+  '/users/reset-password',
+  ensureAuthenticated,
+  checkAdminRole,
+  userController.resetPassword.bind(userController)
+);
+
 module.exports = router;
