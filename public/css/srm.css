@@ -15,7 +15,7 @@
   /* Base was ~10px. So 100px -> 10em. */
   --card-width: 10em;
   --card-height: 14em;
-  --grid-cell-size: 8em;
+  --grid-cell-size: 7em;
   
   /* Responsive Scaling Logic */
   /* Desktop: Fit the 3-column layout (~60em wide, ~50em high) into the view */
