@@ -67,7 +67,11 @@ router.post('/add-tickets', ensureAuthenticated, checkAdminRole, async (req, res
 
     // Emit event to update the ticket balance in real-time
     const io = req.app.get('io');
-    io.emit('ticketUpdate', { userId: user._id, ticketBalance: user.ticketBalance });
+    io.emit('ticketUpdate', {
+      userId: user._id,
+      username: user.username,
+      ticketBalance: user.ticketBalance
+    });
 
     res.send('Tickets added successfully.');
   } catch (err) {
@@ -86,7 +90,11 @@ router.post('/remove-tickets', ensureAuthenticated, checkAdminRole, async (req, 
 
     // Emit event to update the ticket balance in real-time
     const io = req.app.get('io');
-    io.emit('ticketUpdate', { userId: user._id, ticketBalance: user.ticketBalance });
+    io.emit('ticketUpdate', {
+      userId: user._id,
+      username: user.username,
+      ticketBalance: user.ticketBalance
+    });
 
     res.send('Tickets removed successfully.');
   } catch (err) {

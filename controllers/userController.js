@@ -88,6 +88,7 @@ class UserController {
       // Emit socket event for ticket update
       req.app.get('io').emit('ticketUpdate', {
         userId: user._id.toString(),
+        username: user.username,
         ticketBalance: user.ticketBalance,
       });
   
@@ -119,6 +120,7 @@ class UserController {
       // Emit socket event for ticket update
       req.app.get('io').emit('ticketUpdate', {
         userId: user._id.toString(),
+        username: user.username,
         ticketBalance: user.ticketBalance,
       });
 
