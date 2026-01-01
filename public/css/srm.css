@@ -300,9 +300,11 @@ h1, h2, h3, .srm-title {
   top: 0;
   left: -320px;
   width: 300px;
-  height: 100vh;
+  height: calc(100vh - var(--action-bar-height) - env(safe-area-inset-bottom, 0px));
   background: rgba(0, 0, 0, 0.9);
   border-right: 2px solid var(--gold-accent);
+  border-bottom: 2px solid var(--gold-accent);
+  border-bottom-right-radius: 8px;
   transition: left 0.3s ease;
   z-index: 2000;
   padding: 1rem;
@@ -333,7 +335,7 @@ h1, h2, h3, .srm-title {
 }
 
 .balance-list {
-  max-height: calc(100vh - 150px);
+  max-height: calc(100vh - var(--action-bar-height) - env(safe-area-inset-bottom, 0px) - 100px);
   overflow-y: auto;
 }
 
