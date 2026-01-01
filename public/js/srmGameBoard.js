@@ -280,24 +280,58 @@ function rebuildUIFromState(gameState, currentUserId, isDealer) {
 }
 
 /**
- * Position chips in a grid
+ * Position chips in a grid using percentage offsets
  */
 function positionChips(parentEl) {
   const chipEls = Array.from(parentEl.querySelectorAll('.chip'));
-
-  const chipSize = 32; // base size
-  const gap = 2;
-
+  
+  // We want to fit up to 4 chips nicely in a 2x2 grid, 
+  // and then start stacking/overlapping if there are more.
+  
   chipEls.forEach((chip, index) => {
-    // Simple stacking/grid logic
-    // For the small 3D chips, maybe just offset them slightly if there are many
-    const row = Math.floor(index / 3);
-    const col = index % 3;
-    const topPx = row * (chipSize + gap);
-    const leftPx = col * (chipSize + gap);
-
-    chip.style.top = topPx + 'px';
-    chip.style.left = leftPx + 'px';
+    // 2x2 grid logic
+    // 0 | 1
+    // -----
+    // 2 | 3
+    
+    // For 5+, we cycle or just stack. Let's stack cyclically.
+    const gridPos = index % 4;
+    
+    const col = gridPos % 2; 
+    const row = Math.floor(gridPos / 2);
+    
+    // Base offsets (in %)
+    // Cell is 100% x 100%. Chip is roughly 50% x 50% (3.2em in 6em cell ~= 53%)
+    // Let's create a slight overlap to center them better.
+    // 5% margin?
+    
+    const size = 50; // Use about 50% width implicitly by positioning
+    const gap = 0;
+    
+    // We want to center the 2x2 block.
+    // If we put left at 0% and 50%, they cover the width.
+    
+    let leftPct = col * 50;
+    let topPct = row * 50;
+    
+    // Add a little randomness or stack offset for >4
+    const stackLayer = Math.floor(index / 4);
+    if (stackLayer > 0) {
+        // Shift slightly to show stack
+        leftPct += stackLayer * 2; 
+        topPct -= stackLayer * 2;
+    }
+    
+    // Apply
+    chip.style.left = leftPct + '%';
+    chip.style.top = topPct + '%';
+    
+    // Important: We need to override the physical pixel/em size if we want pure % scaling
+    // BUT we set chip size in em in CSS. So it scales with the board.
+    // So we just need to place the top-left corner correctly.
+    // The CSS .chip width/height is 3.2em. The cell is 6em.
+    // 3.2em is > 50% of 6em (3em). So they will overlap.
+    // That's fine, it looks like a pile.
   });
 }
 
