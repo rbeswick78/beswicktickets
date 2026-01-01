@@ -76,6 +76,92 @@ function showToast(message, type = 'info') {
 }
 
 /**
+ * -------------------------------------------------------------
+ *  Batch Betting Logic (Global Scope)
+ * -------------------------------------------------------------
+ */
+let pendingBets = [];
+let batchTimer = null;
+
+function sendPendingBets() {
+  if (pendingBets.length === 0) return;
+
+  // Aggregate locally to reduce payload size
+  const aggregated = {};
+  pendingBets.forEach(pb => {
+    if (!aggregated[pb.spotId]) aggregated[pb.spotId] = 0;
+    aggregated[pb.spotId] += pb.amount;
+  });
+
+  const finalBets = Object.keys(aggregated).map(spotId => ({
+    spotId,
+    amount: aggregated[spotId]
+  }));
+
+  // Ensure we have gameId/userId from window (set in DOMContentLoaded)
+  const gId = window.gameId;
+  const uId = window.currentUserId;
+
+  if (finalBets.length > 0 && gId && uId) {
+    socket.emit('playerBetBatch', {
+      gameId: gId,
+      userId: uId,
+      bets: finalBets
+    });
+  }
+
+  pendingBets = [];
+  batchTimer = null;
+}
+
+function queueBet(spotId, amount) {
+  pendingBets.push({ spotId, amount });
+  if (!batchTimer) {
+    batchTimer = setTimeout(sendPendingBets, 200);
+  }
+}
+
+function updateChipUI(userId, spotId, amount) {
+  let targetEl;
+  if (spotId.includes('suits-')) {
+    targetEl = document.querySelector(`.border-bet[data-spot-id="${spotId}"]`);
+  } else if (spotId.includes('-odd') || spotId.includes('-even')) {
+    targetEl = document.querySelector(`.odd-even-bet[data-spot-id="${spotId}"]`);
+  } else if (spotId.includes('-joker')) {
+    targetEl = document.querySelector(`.joker-bet[data-spot-id="${spotId}"]`);
+  } else if (spotId.includes('-ace')) {
+    targetEl = document.querySelector(`.ace-bet[data-spot-id="${spotId}"]`);
+  } else if (spotId.includes('-low')) {
+    targetEl = document.querySelector(`.lowest-bet[data-spot-id="${spotId}"]`);
+  } else if (spotId.includes('-mid')) {
+    targetEl = document.querySelector(`.middle-bet[data-spot-id="${spotId}"]`);
+  } else if (spotId.includes('-high')) {
+    targetEl = document.querySelector(`.highest-bet[data-spot-id="${spotId}"]`);
+  } else {
+    targetEl = document.querySelector(`.suit-quad[data-spot-id="${spotId}"]`);
+  }
+
+  if (!targetEl) return;
+  const existingChip = targetEl.querySelector(`.chip[data-user-id="${userId}"]`);
+  if (existingChip) {
+    const currentAmount = parseInt(existingChip.dataset.amount || '0', 10);
+    const newAmount = currentAmount + amount;
+    
+    if (newAmount <= 0) {
+      existingChip.remove();
+    } else {
+      existingChip.dataset.amount = newAmount;
+      existingChip.textContent = newAmount;
+    }
+  } else if (amount > 0) {
+    // Only create if positive
+    const chipEl = createChipElement(userId, amount, spotId);
+    targetEl.appendChild(chipEl);
+  }
+  positionChips(targetEl);
+}
+
+/**
  * Create a chip element, including the click-to-remove logic for the current user only
  */
 function createChipElement(userId, amount, spotId) {
@@ -504,85 +590,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // -------------------------------------------------------------
-  //  Batch Betting Logic
-  // -------------------------------------------------------------
-  let pendingBets = [];
-  let batchTimer = null;
-
-  function sendPendingBets() {
-    if (pendingBets.length === 0) return;
-
-    // Aggregate locally to reduce payload size
-    const aggregated = {};
-    pendingBets.forEach(pb => {
-      if (!aggregated[pb.spotId]) aggregated[pb.spotId] = 0;
-      aggregated[pb.spotId] += pb.amount;
-    });
-
-    const finalBets = Object.keys(aggregated).map(spotId => ({
-      spotId,
-      amount: aggregated[spotId]
-    }));
-
-    if (finalBets.length > 0) {
-      socket.emit('playerBetBatch', {
-        gameId,
-        userId: currentUserId,
-        bets: finalBets
-      });
-    }
-
-    pendingBets = [];
-    batchTimer = null;
-  }
-
-  function queueBet(spotId, amount) {
-    pendingBets.push({ spotId, amount });
-    if (!batchTimer) {
-      batchTimer = setTimeout(sendPendingBets, 200);
-    }
-  }
-
-  function updateChipUI(userId, spotId, amount) {
-    let targetEl;
-    if (spotId.includes('suits-')) {
-      targetEl = document.querySelector(`.border-bet[data-spot-id="${spotId}"]`);
-    } else if (spotId.includes('-odd') || spotId.includes('-even')) {
-      targetEl = document.querySelector(`.odd-even-bet[data-spot-id="${spotId}"]`);
-    } else if (spotId.includes('-joker')) {
-      targetEl = document.querySelector(`.joker-bet[data-spot-id="${spotId}"]`);
-    } else if (spotId.includes('-ace')) {
-      targetEl = document.querySelector(`.ace-bet[data-spot-id="${spotId}"]`);
-    } else if (spotId.includes('-low')) {
-      targetEl = document.querySelector(`.lowest-bet[data-spot-id="${spotId}"]`);
-    } else if (spotId.includes('-mid')) {
-      targetEl = document.querySelector(`.middle-bet[data-spot-id="${spotId}"]`);
-    } else if (spotId.includes('-high')) {
-      targetEl = document.querySelector(`.highest-bet[data-spot-id="${spotId}"]`);
-    } else {
-      targetEl = document.querySelector(`.suit-quad[data-spot-id="${spotId}"]`);
-    }
-
-    if (!targetEl) return;
-    const existingChip = targetEl.querySelector(`.chip[data-user-id="${userId}"]`);
-    if (existingChip) {
-      const currentAmount = parseInt(existingChip.dataset.amount || '0', 10);
-      const newAmount = currentAmount + amount;
-      
-      if (newAmount <= 0) {
-        existingChip.remove();
-      } else {
-        existingChip.dataset.amount = newAmount;
-        existingChip.textContent = newAmount;
-      }
-    } else if (amount > 0) {
-      // Only create if positive
-      const chipEl = createChipElement(userId, amount, spotId);
-      targetEl.appendChild(chipEl);
-    }
-    positionChips(targetEl);
-  }
 
   // Place bets
   const bettableAreas = document.querySelectorAll(
