@@ -7,7 +7,7 @@
   <!-- Google Fonts: Rye for headers, Roboto for UI -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Rye&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@700&family=Roboto:wght@400;700&family=Rye&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/srm.css" />
 </head>
 <body
@@ -182,18 +182,21 @@
     
     <!-- Action Bar (Fixed Bottom) -->
     <div id="action-bar" class="action-bar">
-        <div class="my-balance">
-            <span class="label">My Balance:</span>
-            <span id="my-balance-amount" class="amount">Loading...</span>
-        </div>
-        
-        <!-- Chip Selector -->
-        <div class="chip-selector">
-            <div class="chip-option selected" data-value="1">1</div>
-            <div class="chip-option" data-value="5">5</div>
-            <div class="chip-option" data-value="10">10</div>
-            <div class="chip-option" data-value="20">20</div>
-            <div class="chip-option" data-value="50">50</div>
+        <!-- Betting Station: Balance + Chips grouped together -->
+        <div class="betting-station">
+            <div class="balance-led">
+                <span class="led-label">BANK</span>
+                <span id="my-balance-amount" class="led-display">0</span>
+            </div>
+            
+            <!-- Chip Selector -->
+            <div class="chip-selector">
+                <div class="chip-option selected" data-value="1">1</div>
+                <div class="chip-option" data-value="5">5</div>
+                <div class="chip-option" data-value="10">10</div>
+                <div class="chip-option" data-value="20">20</div>
+                <div class="chip-option" data-value="50">50</div>
+            </div>
         </div>
         
         <% if (game.dealer._id.toString() === currentUserId) { %>

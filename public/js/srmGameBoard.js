@@ -25,6 +25,12 @@ let longShotCelebrationActive = false;
 // Chip selector state
 let selectedBetAmount = 1; 
 
+// LED Balance animation state
+let displayedBalance = 0;        // What's currently shown on the LED
+let actualBalance = 0;           // The real server balance
+let balanceAnimationId = null;   // Animation frame ID for cleanup
+let winTickAudio = null;         // Sound for count-up ticks
+
 /**
  * A map to store userId -> color
  */
@@ -86,6 +92,127 @@ function showToast(message, type = 'info') {
 
 /**
  * -------------------------------------------------------------
+ *  LED Balance Animation Logic
+ * -------------------------------------------------------------
+ */
+
+/**
+ * Update the LED display with optional animation
+ * @param {number} newBalance - The new balance to display
+ * @param {boolean} animate - Whether to animate the transition
+ * @param {boolean} isWin - Whether this is a win (triggers count-up with sound)
+ */
+function updateLedBalance(newBalance, animate = false, isWin = false) {
+  const ledContainer = document.querySelector('.balance-led');
+  const ledDisplay = document.getElementById('my-balance-amount');
+  
+  if (!ledDisplay || !ledContainer) return;
+  
+  actualBalance = newBalance;
+  
+  if (!animate || displayedBalance === newBalance) {
+    // Instant update
+    displayedBalance = newBalance;
+    ledDisplay.textContent = newBalance.toLocaleString();
+    return;
+  }
+  
+  // Cancel any running animation
+  if (balanceAnimationId) {
+    cancelAnimationFrame(balanceAnimationId);
+    balanceAnimationId = null;
+  }
+  
+  const startValue = displayedBalance;
+  const endValue = newBalance;
+  const diff = endValue - startValue;
+  
+  if (diff === 0) return;
+  
+  if (isWin && diff > 0) {
+    // Count up one by one for wins
+    animateCountUp(startValue, endValue, ledDisplay, ledContainer);
+  } else if (diff < 0) {
+    // Loss or bet - show red flash and instant update
+    ledContainer.classList.add('loss-flash');
+    displayedBalance = endValue;
+    ledDisplay.textContent = endValue.toLocaleString();
+    setTimeout(() => {
+      ledContainer.classList.remove('loss-flash');
+    }, 500);
+  } else {
+    // Generic increase without win animation
+    displayedBalance = endValue;
+    ledDisplay.textContent = endValue.toLocaleString();
+  }
+}
+
+/**
+ * Animate counting up one by one with sound
+ */
+function animateCountUp(startValue, endValue, ledDisplay, ledContainer) {
+  const diff = endValue - startValue;
+  
+  // Calculate timing: aim for 2-3 seconds max, minimum 30ms per tick
+  const maxDuration = 3000;
+  const minInterval = 30;
+  let interval = Math.max(minInterval, Math.floor(maxDuration / diff));
+  
+  // Cap at reasonable speed for large wins
+  if (interval < minInterval) interval = minInterval;
+  
+  ledContainer.classList.add('counting-up');
+  
+  let currentValue = startValue;
+  
+  function tick() {
+    currentValue++;
+    displayedBalance = currentValue;
+    ledDisplay.textContent = currentValue.toLocaleString();
+    
+    // Play tick sound (with slight pitch variation for interest)
+    if (winTickAudio) {
+      const tickSound = winTickAudio.cloneNode();
+      tickSound.volume = 0.3;
+      tickSound.playbackRate = 0.9 + Math.random() * 0.2; // Slight variation
+      tickSound.play().catch(() => {});
+    }
+    
+    if (currentValue < endValue) {
+      balanceAnimationId = setTimeout(tick, interval);
+    } else {
+      // Animation complete
+      ledContainer.classList.remove('counting-up');
+      balanceAnimationId = null;
+    }
+  }
+  
+  tick();
+}
+
+/**
+ * Flash the LED for bet placement (instant decrement)
+ * @param {number} betAmount - Amount being bet
+ */
+function flashBetPlaced(betAmount) {
+  const ledContainer = document.querySelector('.balance-led');
+  const ledDisplay = document.getElementById('my-balance-amount');
+  
+  if (!ledDisplay || !ledContainer) return;
+  
+  // Instantly decrement displayed balance
+  displayedBalance = Math.max(0, displayedBalance - betAmount);
+  ledDisplay.textContent = displayedBalance.toLocaleString();
+  
+  // Add red flash class
+  ledContainer.classList.add('bet-placed');
+  setTimeout(() => {
+    ledContainer.classList.remove('bet-placed');
+  }, 300);
+}
+
+/**
+ * -------------------------------------------------------------
  *  Batch Betting Logic (Global Scope)
  * -------------------------------------------------------------
  */
@@ -125,6 +252,12 @@ function sendPendingBets() {
 
 function queueBet(spotId, amount) {
   pendingBets.push({ spotId, amount });
+  
+  // Flash LED for bet placement (only for positive bets, i.e., placing, not removing)
+  if (amount > 0) {
+    flashBetPlaced(amount);
+  }
+  
   if (!batchTimer) {
     batchTimer = setTimeout(sendPendingBets, 200);
   }
@@ -826,8 +959,10 @@ document.addEventListener('DOMContentLoaded', () => {
   roundResultsAudio.load();
 
   longShotAudio = new Audio('/sound/beswick-boys-rule.mp3');
-  longShotAudio.load(); 
-
+  longShotAudio.load();
+  
+  winTickAudio = new Audio('/sound/win-single.mp3');
+  winTickAudio.load();
 
   // Helper for updating or creating a new player-balance item
   function updatePlayerBalance(userId, username, balance) {
@@ -842,12 +977,16 @@ document.addEventListener('DOMContentLoaded', () => {
     balanceItem.style.color = getUserColor(userId);
     balanceItem.textContent = `${username}: ${balance}`;
 
-    // Also update the fixed footer balance if it's me
+    // Update the LED balance display for current user
     if (userId === currentUserId && myBalanceDisplay) {
-        myBalanceDisplay.textContent = balance;
-        // Flash effects?
-        myBalanceDisplay.style.color = '#fff';
-        setTimeout(() => { myBalanceDisplay.style.color = ''; }, 300);
+      // Determine if this is a win (balance increased from server perspective)
+      // and we're in results phase (cards have been dealt)
+      const isWin = balance > actualBalance && (currentRoundStatus === 'resultsPending' || currentRoundStatus === 'results');
+      
+      // Animate if balance changed and we have a prior value
+      const shouldAnimate = actualBalance !== 0 && balance !== actualBalance;
+      
+      updateLedBalance(balance, shouldAnimate, isWin);
     }
   }
 
@@ -859,6 +998,13 @@ document.addEventListener('DOMContentLoaded', () => {
   socket.on('gameData', (data) => {
     data.players.forEach((player) => {
       userColorMap[player.userId] = player.color;
+      
+      // Initialize LED balance for current user (no animation on load)
+      if (player.userId === currentUserId) {
+        displayedBalance = player.ticketBalance;
+        actualBalance = player.ticketBalance;
+      }
+      
       updatePlayerBalance(player.userId, player.username, player.ticketBalance);
     });
     rebuildUIFromState(data, currentUserId, isDealer);
@@ -875,6 +1021,13 @@ document.addEventListener('DOMContentLoaded', () => {
   socket.on('playerList', (players) => {
     players.forEach((player) => {
       userColorMap[player.userId] = player.color;
+      
+      // Initialize LED balance for current user if not already set
+      if (player.userId === currentUserId && actualBalance === 0) {
+        displayedBalance = player.ticketBalance;
+        actualBalance = player.ticketBalance;
+      }
+      
       updatePlayerBalance(player.userId, player.username, player.ticketBalance);
     });
   });
@@ -1064,6 +1217,13 @@ document.addEventListener('DOMContentLoaded', () => {
     dealtCardsCache = null;
     longShotWinsCache = null;
     longShotCelebrationActive = false;
+    
+    // Sync displayed balance with actual (in case of any drift)
+    displayedBalance = actualBalance;
+    const ledDisplay = document.getElementById('my-balance-amount');
+    if (ledDisplay) {
+      ledDisplay.textContent = actualBalance.toLocaleString();
+    }
 
     // Clean up any leftover celebration elements
     cleanupCelebration();
