@@ -8,6 +8,7 @@
 let currentRoundStatus = 'betting';
 let finishedDealing = false;    // Track if the 3rd card is shown
 let payoutResultsCache = null;  // Store results until the flips are done
+let dealtCardsCache = null;     // Store dealt cards for results display
 
 // Added audio variables
 let placeYourBetsAudio;
@@ -222,74 +223,150 @@ function resetCard(slotEl) {
  * after the last card + an additional delay).
  */
 function showPayoutResults(betResults) {
-  const payoutResultsList = document.getElementById('payout-results-list');
-  payoutResultsList.innerHTML = '';
-
-  // Calculate total net for current user for celebration
-  let myNet = 0;
-
-  // Create table
-  const table = document.createElement('table');
-  const thead = document.createElement('thead');
-  thead.innerHTML = `
-    <tr>
-      <th>Player</th>
-      <th>Card</th>
-      <th>Bet</th>
-      <th>Wager</th>
-      <th>Net</th>
-    </tr>
-  `;
-  table.appendChild(thead);
-
-  const tbody = document.createElement('tbody');
-
-  // Sort results by username then cardNumber
-  betResults.sort((a, b) => {
-    if (a.username !== b.username) {
-      return a.username.localeCompare(b.username);
-    }
-    return a.cardNumber - b.cardNumber;
-  });
+  // Aggregate results by player
+  const playerTotals = {};
+  let totalPot = 0;
+  let biggestWin = 0;
+  let biggestLoss = 0;
 
   betResults.forEach((result) => {
-    const { userId, username, cardNumber, betDescr, wager, net } = result;
-    
-    if (userId === currentUserId) {
-        myNet += net;
+    const { userId, username, wager, net } = result;
+    totalPot += wager;
+
+    if (!playerTotals[userId]) {
+      playerTotals[userId] = {
+        userId,
+        username,
+        totalWager: 0,
+        totalNet: 0,
+        bets: []
+      };
     }
+    playerTotals[userId].totalWager += wager;
+    playerTotals[userId].totalNet += net;
+    playerTotals[userId].bets.push(result);
 
-    const row = document.createElement('tr');
-
-    // Format net with sign
-    const sign = net > 0 ? '+' : (net < 0 ? '-' : '');
-    const netCellText = `${sign}${Math.abs(net)}`;
-
-    row.innerHTML = `
-      <td>${username}</td>
-      <td>${cardNumber}</td>
-      <td>${betDescr}</td>
-      <td>${wager}</td>
-      <td>${netCellText}</td>
-    `;
-
-    // Highlight winning rows
-    if (net > 0) {
-      row.style.backgroundColor = 'rgba(255, 215, 0, 0.2)';
-    }
-
-    tbody.appendChild(row);
+    if (net > biggestWin) biggestWin = net;
+    if (net < biggestLoss) biggestLoss = net;
   });
 
-  table.appendChild(tbody);
-  payoutResultsList.appendChild(table);
+  // Convert to array and sort by net result (highest first)
+  const sortedPlayers = Object.values(playerTotals).sort((a, b) => b.totalNet - a.totalNet);
 
-  // Show the overlay
-  document.getElementById('payout-results').style.display = 'block';
+  // Identify winner(s) and loser(s)
+  const maxNet = sortedPlayers.length > 0 ? sortedPlayers[0].totalNet : 0;
+  const minNet = sortedPlayers.length > 0 ? sortedPlayers[sortedPlayers.length - 1].totalNet : 0;
 
-  // Celebration if won
+  // Get current user's total net
+  const myData = playerTotals[currentUserId];
+  const myNet = myData ? myData.totalNet : 0;
+
+  // Populate dealt cards display
+  if (dealtCardsCache) {
+    const card1Img = document.querySelector('#result-card-1 img');
+    const card2Img = document.querySelector('#result-card-2 img');
+    const card3Img = document.querySelector('#result-card-3 img');
+    
+    if (card1Img) card1Img.src = getCardImageSrc(dealtCardsCache.card1);
+    if (card2Img) card2Img.src = getCardImageSrc(dealtCardsCache.card2);
+    if (card3Img) card3Img.src = getCardImageSrc(dealtCardsCache.card3);
+  }
+
+  // Populate player standings
+  const standingsGrid = document.getElementById('player-standings-grid');
+  standingsGrid.innerHTML = '';
+
+  sortedPlayers.forEach((player) => {
+    const card = document.createElement('div');
+    card.className = 'player-standing-card';
+
+    // Determine card class based on result
+    if (player.totalNet > 0 && player.totalNet === maxNet) {
+      card.classList.add('winner');
+    } else if (player.totalNet < 0 && player.totalNet === minNet) {
+      card.classList.add('loser');
+    } else if (player.totalNet === 0) {
+      card.classList.add('breakeven');
+    }
+
+    // Highlight if this is the current user
+    if (player.userId === currentUserId) {
+      card.classList.add('is-you');
+    }
+
+    // Determine net class
+    let netClass = 'neutral';
+    if (player.totalNet > 0) netClass = 'positive';
+    else if (player.totalNet < 0) netClass = 'negative';
+
+    // Format net with sign
+    const netSign = player.totalNet > 0 ? '+' : '';
+    const netText = `${netSign}${player.totalNet}`;
+
+    // Badge for winner/loser
+    let badge = '';
+    if (player.totalNet > 0 && player.totalNet === maxNet) {
+      badge = '<div class="player-badge">👑</div>';
+    } else if (player.totalNet < 0 && player.totalNet === minNet) {
+      badge = '<div class="player-badge">💀</div>';
+    } else if (player.totalNet === 0) {
+      badge = '<div class="player-badge">➖</div>';
+    }
+
+    // You indicator
+    const youIndicator = player.userId === currentUserId ? '<span class="you-indicator">You</span>' : '';
+
+    card.innerHTML = `
+      ${youIndicator}
+      <div class="player-name" style="color: ${getUserColor(player.userId)}">${player.username}</div>
+      <div class="player-net ${netClass}">${netText}</div>
+      <div class="player-wager">Wagered: ${player.totalWager}</div>
+      ${badge}
+    `;
+
+    standingsGrid.appendChild(card);
+  });
+
+  // Populate your bets section
+  const yourBetsList = document.getElementById('your-bets-list');
+  yourBetsList.innerHTML = '';
+
+  if (myData && myData.bets.length > 0) {
+    myData.bets.forEach((bet) => {
+      const betItem = document.createElement('div');
+      betItem.className = 'bet-item';
+      
+      const resultClass = bet.net > 0 ? 'win' : (bet.net < 0 ? 'loss' : '');
+      const netSign = bet.net > 0 ? '+' : '';
+      
+      betItem.innerHTML = `
+        <span class="bet-description">Card ${bet.cardNumber}: ${bet.betDescr}</span>
+        <span class="bet-result ${resultClass}">${netSign}${bet.net}</span>
+      `;
+      yourBetsList.appendChild(betItem);
+    });
+  } else {
+    yourBetsList.innerHTML = '<div class="bet-item"><span class="bet-description">No bets placed</span></div>';
+  }
+
+  // Your net result
+  const yourNetValue = document.getElementById('your-net-value');
+  const netSign = myNet > 0 ? '+' : '';
+  yourNetValue.textContent = `${netSign}${myNet}`;
+  yourNetValue.className = myNet > 0 ? 'positive' : (myNet < 0 ? 'negative' : '');
+
+  // Populate round stats
+  document.getElementById('stat-total-pot').textContent = totalPot;
+  document.getElementById('stat-biggest-win').textContent = biggestWin > 0 ? `+${biggestWin}` : '0';
+  document.getElementById('stat-biggest-loss').textContent = biggestLoss < 0 ? biggestLoss : '0';
+
+  // Show the modal
+  document.getElementById('payout-results').style.display = 'flex';
+
+  // Trigger confetti for winners
   if (myNet > 0) {
-      showToast(`You won ${myNet} tickets! 🎉`, 'success');
+    triggerConfetti();
+    showToast(`You won ${myNet} tickets! 🎉`, 'success');
   }
 
   // If dealer, make sure button says "Clear"
@@ -297,6 +374,45 @@ function showPayoutResults(betResults) {
     const dealButton = document.getElementById('deal-button');
     if (dealButton) dealButton.textContent = 'Clear';
   }
+}
+
+/**
+ * Trigger confetti animation for winners
+ */
+function triggerConfetti() {
+  const container = document.getElementById('confetti-container');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  const colors = ['#d4af37', '#ffd700', '#ff6b6b', '#4ade80', '#60a5fa', '#f472b6'];
+  const confettiCount = 50;
+
+  for (let i = 0; i < confettiCount; i++) {
+    const confetti = document.createElement('div');
+    confetti.className = 'confetti';
+    confetti.style.left = Math.random() * 100 + '%';
+    confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+    confetti.style.animationDelay = Math.random() * 2 + 's';
+    confetti.style.transform = `rotate(${Math.random() * 360}deg)`;
+    
+    // Randomize shape
+    if (Math.random() > 0.5) {
+      confetti.style.borderRadius = '50%';
+    }
+    
+    container.appendChild(confetti);
+    
+    // Trigger animation
+    setTimeout(() => {
+      confetti.classList.add('active');
+    }, 50);
+  }
+
+  // Clean up after animation
+  setTimeout(() => {
+    container.innerHTML = '';
+  }, 5000);
 }
 
 /**
@@ -522,6 +638,13 @@ document.addEventListener('DOMContentLoaded', () => {
   socket.on('cardsDealt', (dealData) => {
     console.log('[cardsDealt] arrived, starting timeouts');
 
+    // Cache the dealt cards for results display
+    dealtCardsCache = {
+      card1: dealData.card1,
+      card2: dealData.card2,
+      card3: dealData.card3
+    };
+
     // Immediately show card 1 and play "steal.mp3"
     revealCard(cardSlot1, dealData.card1, 'Card 1');
     stealAudio.play().catch(err => {
@@ -629,6 +752,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Close round results
   closePayoutResultsBtn?.addEventListener('click', () => {
     payoutResultsContainer.style.display = 'none';
+    // Clear confetti if still running
+    const confettiContainer = document.getElementById('confetti-container');
+    if (confettiContainer) confettiContainer.innerHTML = '';
   });
 
   // roundCleared => UI reset
@@ -656,6 +782,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Reset flags for all clients
     finishedDealing = false;
     payoutResultsCache = null;
+    dealtCardsCache = null;
   });
 
   // removeBet => update UI

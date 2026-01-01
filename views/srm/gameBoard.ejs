@@ -196,11 +196,66 @@
 
   </div> <!-- end game-wrapper -->
 
-  <div id="payout-results" style="display: none;">
-    <div class="payout-inner">
-      <h3>Round Results</h3>
-      <div id="payout-results-list"></div>
-      <button id="close-payout-results">OK</button>
+  <!-- Round Results Modal -->
+  <div id="payout-results" class="results-modal-overlay" style="display: none;">
+    <div class="results-modal">
+      <!-- Confetti container for winners -->
+      <div class="confetti-container" id="confetti-container"></div>
+      
+      <!-- Header with dealt cards -->
+      <div class="results-header">
+        <h2 class="results-title">Round Results</h2>
+        <div class="dealt-cards-display">
+          <div class="dealt-card" id="result-card-1">
+            <img src="" alt="Card 1" />
+          </div>
+          <div class="dealt-card" id="result-card-2">
+            <img src="" alt="Card 2" />
+          </div>
+          <div class="dealt-card" id="result-card-3">
+            <img src="" alt="Card 3" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Player Standings Section -->
+      <div class="player-standings-section">
+        <h3 class="section-title">Player Standings</h3>
+        <div class="player-standings-grid" id="player-standings-grid">
+          <!-- Player cards will be dynamically inserted here -->
+        </div>
+      </div>
+
+      <!-- Bottom Section: Your Bets + Round Stats -->
+      <div class="results-bottom-section">
+        <div class="your-bets-section">
+          <h4 class="subsection-title">Your Bets</h4>
+          <div class="your-bets-list" id="your-bets-list">
+            <!-- Your individual bets listed here -->
+          </div>
+          <div class="your-net-result" id="your-net-result">
+            Your Net: <span id="your-net-value">0</span>
+          </div>
+        </div>
+        <div class="round-stats-section">
+          <h4 class="subsection-title">Round Stats</h4>
+          <div class="stat-row">
+            <span class="stat-label">Total Pot:</span>
+            <span class="stat-value" id="stat-total-pot">0</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Biggest Win:</span>
+            <span class="stat-value win" id="stat-biggest-win">0</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Biggest Loss:</span>
+            <span class="stat-value loss" id="stat-biggest-loss">0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Close Button -->
+      <button id="close-payout-results" class="close-results-btn">Continue</button>
     </div>
   </div>
 
