@@ -508,28 +508,48 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Place bets
-  const bettableAreas = document.querySelectorAll(
-    '.suit-quad, .border-bet, .odd-even-bet, .joker-bet, .ace-bet, .lowest-bet, .middle-bet, .highest-bet'
-  );
-  bettableAreas.forEach((area) => {
-    area.addEventListener('click', () => {
-      if (currentRoundStatus !== 'betting') return;
-      const spotId = area.getAttribute('data-spot-id');
-      socket.emit('playerBet', {
+  // -------------------------------------------------------------
+  //  Batch Betting Logic
+  // -------------------------------------------------------------
+  let pendingBets = [];
+  let batchTimer = null;
+
+  function sendPendingBets() {
+    if (pendingBets.length === 0) return;
+
+    // Aggregate locally to reduce payload size
+    const aggregated = {};
+    pendingBets.forEach(pb => {
+      if (!aggregated[pb.spotId]) aggregated[pb.spotId] = 0;
+      aggregated[pb.spotId] += pb.amount;
+    });
+
+    const finalBets = Object.keys(aggregated).map(spotId => ({
+      spotId,
+      amount: aggregated[spotId]
+    }));
+
+    if (finalBets.length > 0) {
+      socket.emit('playerBetBatch', {
         gameId,
         userId: currentUserId,
-        spotId,
-        amount: 1
+        bets: finalBets
       });
-    });
-  });
+    }
 
-  // Listen for betPlaced
-  socket.on('betPlaced', (betData) => {
-    const { userId, spotId, amount } = betData;
+    pendingBets = [];
+    batchTimer = null;
+  }
+
+  function queueBet(spotId, amount) {
+    pendingBets.push({ spotId, amount });
+    if (!batchTimer) {
+      batchTimer = setTimeout(sendPendingBets, 200);
+    }
+  }
+
+  function updateChipUI(userId, spotId, amount) {
     let targetEl;
-
     if (spotId.includes('suits-')) {
       targetEl = document.querySelector(`.border-bet[data-spot-id="${spotId}"]`);
     } else if (spotId.includes('-odd') || spotId.includes('-even')) {
@@ -560,6 +580,34 @@ document.addEventListener('DOMContentLoaded', () => {
       targetEl.appendChild(chipEl);
     }
     positionChips(targetEl);
+  }
+
+  // Place bets
+  const bettableAreas = document.querySelectorAll(
+    '.suit-quad, .border-bet, .odd-even-bet, .joker-bet, .ace-bet, .lowest-bet, .middle-bet, .highest-bet'
+  );
+  bettableAreas.forEach((area) => {
+    area.addEventListener('click', () => {
+      if (currentRoundStatus !== 'betting') return;
+      const spotId = area.getAttribute('data-spot-id');
+      // Use batch queue instead of direct emit
+      queueBet(spotId, 1);
+    });
+  });
+
+  // Listen for betPlaced (legacy/single)
+  socket.on('betPlaced', (betData) => {
+    const { userId, spotId, amount } = betData;
+    updateChipUI(userId, spotId, amount);
+  });
+
+  // Listen for betPlacedBatch (new)
+  socket.on('betPlacedBatch', (data) => {
+    if (data.bets && Array.isArray(data.bets)) {
+      data.bets.forEach(bet => {
+        updateChipUI(bet.userId, bet.spotId, bet.amount);
+      });
+    }
   });
 
   // Deal or Clear

@@ -73,6 +73,21 @@ app.use((err, req, res, next) => {
   res.status(500).send('Something went wrong!');
 });
 
+// Global serialization queues to prevent race conditions
+const gameQueues = {}; // gameId -> Promise chain
+
+function runSerialized(gameId, task) {
+  if (!gameQueues[gameId]) {
+    gameQueues[gameId] = Promise.resolve();
+  }
+  // Chain the task. We catch errors inside the chain so one failure doesn't block future tasks.
+  const next = gameQueues[gameId].then(task).catch(err => {
+    console.error(`Serialized task error for game ${gameId}:`, err);
+  });
+  gameQueues[gameId] = next;
+  return next;
+}
+
 // SOCKET.IO EVENTS
 io.on('connection', (socket) => {
   console.log('A user connected via WebSocket');
@@ -127,45 +142,123 @@ io.on('connection', (socket) => {
 
   socket.on('playerBet', async (betData) => {
     const { gameId, userId, spotId, amount } = betData;
+    // ... (legacy handler can remain or be deprecated, keeping for compatibility) ...
+    // Note: To be fully robust, this should also use runSerialized, but we'll focus on the batch handler.
+    // If the client switches fully to batch, this won't be called.
+    // However, for safety, let's wrap this too or just leave it. 
+    // The user asked to "come up with a more efficient way", implying the new way is the batch way.
+    
+    // ... logic ...
     try {
-      const game = await SrmGame.findById(gameId);
-      if (!game) return;
+      // Use serialization here too to be safe against mixed clients or single clicks
+      await runSerialized(gameId, async () => {
+          const game = await SrmGame.findById(gameId);
+          if (!game) return;
 
-      // Enforce: betting must be open
-      if (game.roundStatus !== 'betting') {
-        socket.emit('betError', {
-          message: 'Betting is closed for this round.'
-        });
-        return;
-      }
+          // Enforce: betting must be open
+          if (game.roundStatus !== 'betting') {
+            socket.emit('betError', {
+              message: 'Betting is closed for this round.'
+            });
+            return;
+          }
 
-      const user = await User.findById(userId);
-      if (!user) return;
+          const user = await User.findById(userId);
+          if (!user) return;
 
-      // Check user has enough tickets, etc...
-      if (user.ticketBalance < amount) {
-        socket.emit('betError', {
-          message: 'Insufficient tickets for this bet.'
-        });
-        return;
-      }
+          // Check user has enough tickets, etc...
+          if (user.ticketBalance < amount) {
+            socket.emit('betError', {
+              message: 'Insufficient tickets for this bet.'
+            });
+            return;
+          }
 
-      const existingBet = game.bets.find(
-        (b) => b.userId.toString() === userId && b.spotId === spotId
-      );
-      if (existingBet) {
-        existingBet.amount += amount;
-      } else {
-        game.bets.push({ userId, spotId, amount });
-      }
+          const existingBet = game.bets.find(
+            (b) => b.userId.toString() === userId && b.spotId === spotId
+          );
+          if (existingBet) {
+            existingBet.amount += amount;
+          } else {
+            game.bets.push({ userId, spotId, amount });
+          }
 
-      await game.save();
-      await user.removeTickets(amount, `Bet placed - Game #${game.code}`);
+          await game.save();
+          await user.removeTickets(amount, `Bet placed - Game #${game.code}`);
 
-      io.to(`srmGame_${gameId}`).emit('betPlaced', betData);
+          io.to(`srmGame_${gameId}`).emit('betPlaced', betData);
+      });
     } catch (error) {
       console.error('Error saving bet:', error);
     }
+  });
+
+  // NEW: Batched Bet Handler
+  socket.on('playerBetBatch', (batchData) => {
+    const { gameId, userId, bets } = batchData; // bets: [{ spotId, amount }, ...]
+
+    runSerialized(gameId, async () => {
+      try {
+        const game = await SrmGame.findById(gameId);
+        if (!game) return;
+
+        // Enforce: betting must be open
+        if (game.roundStatus !== 'betting') {
+          socket.emit('betError', { message: 'Betting is closed for this round.' });
+          return;
+        }
+
+        const user = await User.findById(userId);
+        if (!user) return;
+
+        // Calculate total amount
+        const totalAmount = bets.reduce((sum, b) => sum + (b.amount || 0), 0);
+
+        // Check user has enough tickets
+        if (user.ticketBalance < totalAmount) {
+          socket.emit('betError', { message: 'Insufficient tickets for these bets.' });
+          return;
+        }
+
+        // Deduct from user first (atomic-like check done above, assuming single user thread per socket or sufficient funds)
+        // If we want to be super safe, we can optimize later, but serialize helps.
+        await user.removeTickets(totalAmount, `Bets placed (Batch) - Game #${game.code}`);
+
+        try {
+          // Update game bets
+          for (const bet of bets) {
+              const { spotId, amount } = bet;
+              const existingBet = game.bets.find(
+                  (b) => b.userId.toString() === userId && b.spotId === spotId
+              );
+              if (existingBet) {
+                  existingBet.amount += amount;
+              } else {
+                  game.bets.push({ userId, spotId, amount });
+              }
+          }
+
+          await game.save();
+        } catch (saveError) {
+          // If game save fails, refund the user
+          console.error('Game save failed, refunding user:', saveError);
+          await user.addTickets(totalAmount, `Refund - Game #${game.code} Save Failed`);
+          throw saveError; // Re-throw to be caught by outer catch
+        }
+
+        // Emit batch confirmation
+        const confirmedBets = bets.map(b => ({
+            userId,
+            spotId: b.spotId,
+            amount: b.amount
+        }));
+
+        io.to(`srmGame_${gameId}`).emit('betPlacedBatch', { bets: confirmedBets });
+
+      } catch (error) {
+        console.error('Error processing bet batch:', error);
+      }
+    });
   });
 
   // DEAL CARDS
