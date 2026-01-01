@@ -1,166 +1,135 @@
-/* srm.css - Basic example styling for SRM */
+/* srm.css - High Roller Theme */
 
 :root {
-  /* Single color variable for all betting areas */
-  --betting-container-color: #800000; /* Maroon (dark red) */
+  /* Colors */
+  --felt-green-start: #0f5e2f;
+  --felt-green-end: #052914;
+  --gold-accent: #d4af37;
+  --gold-dim: #8a7020;
+  --maroon: #800000;
+  --maroon-dark: #4a0000;
+  --text-light: #f0f0f0;
+  --shadow-color: rgba(0, 0, 0, 0.5);
+  
+  /* Dimensions */
+  --card-width: 100px;
+  --card-height: 140px;
 }
 
 body {
   margin: 0;
   padding: 0;
-  font-family: sans-serif;
-  background-image: url("/images/felt.jpg");
-  background-repeat: repeat; /* Tile the image */
-  background-color: #008000; /* A dark green base color */
-  font-size: 1rem;
-  min-width: 320px;  /* Minimum width to prevent too narrow displays */
-  overflow-x: hidden; /* Prevent horizontal scrolling */
-  -webkit-user-select: none; /* For Safari/Chrome */
-  -moz-user-select: none;    /* For Firefox       */
-  -ms-user-select: none;     /* For IE/Edge       */
-  user-select: none;         /* Standard syntax   */
+  font-family: 'Roboto', sans-serif;
+  background: radial-gradient(circle at center, var(--felt-green-start), var(--felt-green-end));
+  color: var(--text-light);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-h1, h2 {
-  margin: 0;         /* Removed margin completely */
-  text-align: center;
+h1, h2, h3, .srm-title {
+  font-family: 'Rye', serif;
+  color: var(--gold-accent);
+  text-shadow: 2px 2px 4px var(--shadow-color);
+  margin: 0;
 }
 
-.role-container {
-  display: flex;
-  justify-content: center;
-  margin-top: 2rem;
+.srm-title {
+    font-size: 2rem;
+    padding: 1rem 0;
+    text-align: center;
 }
 
-.role-container button {
-  margin: 0 1rem;
-  padding: 1rem 2rem;
-  font-size: 1.2rem;
+/* =========================================
+   Layout & Grid
+   ========================================= */
+
+.game-wrapper {
+    padding-bottom: 80px; /* Space for fixed action bar */
 }
 
-/* Example layout for the game board */
 #card-container {
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
   display: flex;
-  flex-wrap: wrap;       /* let cards wrap on smaller screens */
+  flex-wrap: wrap;
   justify-content: center;
-  margin: 0;             /* Removed margin-top completely */
-  gap: 0;                /* Removed gap completely */
-  padding: 0;            /* Removed padding completely */
-  max-width: 900px;      /* Maximum width of the layout */
-  /* Center the layout horizontally when there's extra space */
-  margin-left: auto;
-  margin-right: auto;
-  box-sizing: border-box;
+  gap: 1rem;
+  padding: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 .card-section {
-  flex: 1 1 150px;       /* Allow cards to shrink a bit more */
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin: 0;             /* Removed margin completely */
-  padding: 0;            /* Removed padding completely */
+  flex: 0 1 auto;
 }
 
-/* The card-slot is still a fixed ratio container for the card image */
+/* =========================================
+   3D Card Flip
+   ========================================= */
+
 .card-slot {
+  width: var(--card-width);
+  height: var(--card-height);
+  margin-bottom: 1rem;
+  perspective: 1000px; /* Enable 3D space */
+}
+
+.card-flip-container {
   width: 100%;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0;             /* Removed margin completely */
-  padding: 0;            /* Removed padding completely */
+  height: 100%;
 }
 
-#betting-area {
-  margin: 4rem auto;
-  width: 70%;
+.card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
   text-align: center;
+  transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Bouncy flip */
+  transform-style: preserve-3d;
 }
 
-.bet-spot {
-  display: inline-block;
-  margin: 1rem;
-  padding: 2rem;
-  background: #eee;
-  border: 1px solid #ccc;
-  cursor: pointer;
+/* The .flipped class will be added by JS to rotate the card */
+.card-inner.flipped {
+  transform: rotateY(180deg);
 }
 
-/* Show different layouts on mobile vs. desktop */
-
-@media (max-width: 600px) {
-  #card-container {
-    flex-direction: column;
-    align-items: center;
-  }
-  .card-slot {
-    margin-bottom: 2rem;
-  }
-}
-
-/* Add these styles */
-.player-balances {
+.card-front, .card-back {
   position: absolute;
-  top: 100px;
-  left: 20px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 1rem;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-
-  width: 450px; /* total width */
-  /* Create a 3-row x 3-column grid: */
-  display: grid;
-  grid-template-rows: auto 1fr auto; /* title, content, button */
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.75rem;
-}
-
-.player-balances h3 {
-  grid-column: 1 / 4;         /* span all 3 columns */
-  text-align: center;
-  margin: 0;                 /* remove default heading margin */
-}
-
-#balance-list {
-  /* also span all columns, but display the players in a 3-col grid */
-  grid-column: 1 / 4;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.75rem;
-  max-height: 150px;         /* scroll if too many players */
-  overflow-y: auto;
-}
-
-.balance-item {
-  margin: 0.25rem 0;
-  padding: 0.5rem;
-  border-bottom: 1px solid #eee;
-}
-
-.dealer-button {
-  grid-column: 1 / 4;         /* span all columns */
-  justify-self: center;       /* center the button horizontally */
-  margin-top: 1rem;
-}
-
-.balance-item.current-user {
-  font-weight: bold;
-  background: #f0f0f0;
-  border-radius: 4px;
-}
-
-/* 
-  --------------------------------------------------------------------------------
-  GRID FOR BETTING-CONTAINER
-  --------------------------------------------------------------------------------
-*/
-.betting-container {
   width: 100%;
+  height: 100%;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px var(--shadow-color);
+}
+
+/* Front is initially visible (Card Back Image) */
+.card-front {
+  background-color: #fff;
+}
+
+/* Back is initially hidden (Card Face Image), rotated 180deg */
+.card-back {
+  background-color: #fff;
+  transform: rotateY(180deg);
+}
+
+.card-front img, .card-back img {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  display: block; /* Remove whitespace */
+}
+
+
+/* =========================================
+   Betting Grid ("The Felt")
+   ========================================= */
+
+.betting-container {
   display: grid;
   grid-template-areas:
     "diamond diamond-heart heart"
@@ -168,515 +137,325 @@ h1, h2 {
     "spade spade-club club"
     "odd placeholder even"
     "lowest midcard highest";
-
-  grid-template-rows: repeat(5, 1fr);
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0;
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+  grid-template-columns: repeat(3, 60px); /* Fixed size for precision */
+  grid-template-rows: repeat(5, 60px);
+  gap: 4px; /* Slight gap for felt lines */
+  background-color: rgba(255, 255, 255, 0.1); /* Faint guide lines */
+  padding: 6px;
+  border-radius: 8px;
+  box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+  touch-action: manipulation; /* Improve touch response */
 }
 
-/* Add this new rule to ensure each cell is perfectly square */
 .betting-container > div {
-  aspect-ratio: 1 / 1;
-}
-
-/* Helper function to determine color based on grid area */
-.betting-container > div {
-  background-color: var(--betting-container-color) !important;
-}
-
-.betting-container > .suit-diamond,
-.betting-container > .border-bet-diamond-spade,
-.betting-container > .suit-spade,
-.betting-container > .odd-bet {
-  background-color: var(--betting-container-color) !important;
-}
-
-.betting-container > .border-bet-diamond-heart,
-.betting-container > .border-bet-heart-club,
-.betting-container > .border-bet-spade-club,
-.betting-container > .placeholder {
-  background-color: var(--betting-container-color) !important;
-}
-
-/* Suit areas */
-.suit-diamond {
-  grid-area: diamond;
-}
-.suit-heart {
-  grid-area: heart;
-}
-.suit-spade {
-  grid-area: spade;
-}
-.suit-club {
-  grid-area: club;
-}
-
-/* Border bets */
-.border-bet-diamond-heart {
-  grid-area: diamond-heart;
-}
-.border-bet-diamond-spade {
-  grid-area: diamond-spade;
-}
-.border-bet-heart-club {
-  /* In your instructions, you mentioned hearts+spades row and hearts+clubs. 
-     If hearts+clubs was intended here, rename accordingly. */
-  grid-area: heart-spade; /* rename class if you prefer heart-spade or heart-club */
-}
-.border-bet-spade-club {
-  grid-area: spade-club;
-}
-
-/* Odd/Even bets */
-.odd-bet {
-  grid-area: odd;
-}
-.even-bet {
-  grid-area: even;
-}
-
-/* Placeholders/middle cells */
-.middle-cell,
-.placeholder {
-  grid-area: middle;
-  /* Keep them visible or hidden. If you want them invisible: */
-  background: transparent;
-}
-
-/* Base styling for suits and bets */
-.suit-quad, .border-bet, .odd-even-bet {
+  background-color: rgba(128, 0, 0, 0.6); /* Semi-transparent maroon */
+  border: 1px solid rgba(212, 175, 55, 0.3); /* Faint gold border */
+  border-radius: 4px;
+  position: relative;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background-color 0.2s, box-shadow 0.2s;
+  color: var(--gold-accent);
   font-weight: bold;
-  border: 1px solid #666;
-  position: relative;
-  overflow: hidden;
 }
 
-/* Each grid cell is sized by the grid; 
-   ensure no extra margin/padding around these. */
-.border-bet,
-.suit-quad {
-  width: 100%;
-  height: 100%;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s;
+/* Grid Areas Mapping */
+.suit-diamond { grid-area: diamond; }
+.suit-heart { grid-area: heart; }
+.suit-spade { grid-area: spade; }
+.suit-club { grid-area: club; }
+.border-bet-diamond-heart { grid-area: diamond-heart; }
+.border-bet-diamond-spade { grid-area: diamond-spade; }
+.border-bet-heart-club { grid-area: heart-spade; }
+.border-bet-spade-club { grid-area: spade-club; }
+.odd-bet { grid-area: odd; }
+.even-bet { grid-area: even; }
+.ace-bet { grid-area: placeholder; } /* Center of odd/even row */
+.joker-bet { grid-area: middle; }
+.lowest-bet { grid-area: lowest; }
+.middle-bet { grid-area: midcard; }
+.highest-bet { grid-area: highest; }
+
+/* Interactions */
+.betting-container > div:hover {
+  background-color: rgba(128, 0, 0, 0.9);
+  box-shadow: 0 0 10px var(--gold-accent);
+  border-color: var(--gold-accent);
 }
 
-/* Suit icons behind chips */
-.suit-quad::before {
-  position: absolute;
-  font-size: 3.5rem;
-  line-height: 1;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
+/* Icons & Content */
+.suit-quad::before, .joker-bet::before, .ace-bet::before, .lowest-bet::before, .middle-bet::before, .highest-bet::before, .border-bet::before {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    line-height: 1;
 }
 
-/* Suit-specific icons */
-.suit-diamond::before {
-  content: '♦';
-  color: #FFD700 !important; /* Gold */
-}
-.suit-heart::before {
-  content: '♥';
-  color: #FFD700 !important; /* Gold */
-}
-.suit-spade::before {
-  content: '♠';
-  color: #FFD700 !important; /* Gold */
-}
-.suit-club::before {
-  content: '♣';
-  color: #FFD700 !important; /* Gold */
-}
+/* Suits */
+.suit-diamond::before { content: '♦'; color: var(--gold-accent); font-size: 2rem; }
+.suit-heart::before { content: '♥'; color: var(--gold-accent); font-size: 2rem; }
+.suit-spade::before { content: '♠'; color: var(--gold-accent); font-size: 2rem; }
+.suit-club::before { content: '♣'; color: var(--gold-accent); font-size: 2rem; }
 
-/* Odd/even bet backgrounds */
-.odd-even-bet.odd-bet {
-  background: #fafafa;
-}
-.odd-even-bet.even-bet {
-  background: #f5f5f5;
-}
+/* Suit Combos */
+.border-bet-diamond-heart::before { content: '♦♥'; font-size: 1.2rem; letter-spacing: -2px; }
+.border-bet-diamond-spade::before { content: '♦♠'; font-size: 1.2rem; letter-spacing: -2px; }
+.border-bet-heart-club::before { content: '♥♣'; font-size: 1.2rem; letter-spacing: -2px; }
+.border-bet-spade-club::before { content: '♠♣'; font-size: 1.2rem; letter-spacing: -2px; }
 
-/* Hover effect */
-.border-bet:hover,
-.suit-quad:hover,
-.odd-even-bet:hover {
-  background-color: rgba(128, 0, 0, 0.85) !important;
-}
+/* Special Bets */
+.joker-bet { background-image: url("/svg/joker-gold.svg"); background-size: 60%; background-position: center; background-repeat: no-repeat; }
+.ace-bet::before { content: 'A'; font-size: 1.5rem; font-family: 'Rye'; }
+.lowest-bet::before { content: 'L'; font-size: 1.5rem; font-family: 'Rye'; }
+.middle-bet::before { content: 'M'; font-size: 1.5rem; font-family: 'Rye'; }
+.highest-bet::before { content: 'H'; font-size: 1.5rem; font-family: 'Rye'; }
+.odd-bet, .even-bet { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
 
-/* Chip styling */
+/* Clean up transparent text hacks */
+.lowest-bet, .middle-bet, .highest-bet { color: transparent; } 
+
+/* =========================================
+   3D Chips
+   ========================================= */
+
 .chip {
   position: absolute;
-  width: 32px;  /* Exact width */
-  height: 32px; /* Exact height */
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  border: 2px solid #fff;
+  
+  /* 3D Styling */
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 20%), 
+              conic-gradient(from 0deg, currentColor 0deg, currentColor 360deg); /* Use currentColor to inherit user color */
+  border: 4px dashed rgba(255, 255, 255, 0.7); /* Striped edge */
+  box-shadow: 
+    inset 0 0 0 2px rgba(0,0,0,0.3), /* Inner groove */
+    2px 2px 4px rgba(0,0,0,0.4); /* Drop shadow */
+    
+  color: white; /* Text color */
   font-weight: bold;
-  font-size: 1rem;
+  font-size: 0.8rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  text-shadow: 1px 1px 2px black;
+  
+  z-index: 10;
   cursor: pointer;
-  z-index: 2;
-  transform: none;
-  top: 0;
-  left: 0;
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+  
+  /* Animation */
+  animation: chipDrop 0.3s ease-out;
 }
 
-/* Responsive tweaks for very small screens */
-@media (max-width: 600px) {
-  .betting-container {
-    aspect-ratio: 1 / 1.4;  
-  }
-  .chip {
-    width: 24px;
-    height: 24px;
-    font-size: 0.8rem;
-  }
+@keyframes chipDrop {
+  0% { transform: scale(1.5) translateY(-20px); opacity: 0; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
 }
 
-/* {{ edit_2: Apply the single color to all betting areas, including odd/even }} */
-.betting-container > div,
-.odd-even-bet {
-  background-color: var(--betting-container-color);
-}
+/* =========================================
+   HUD / Sidebar / Action Bar
+   ========================================= */
 
-/* Change the text color for Odd/Even bets to gold */
-.odd-even-bet {
-  color: #FFD700 !important; /* Gold */
-}
-
-/* srm.css snippet to style the Joker cell similarly to other bets. */
-
-/* Use the grid-area 'middle' for the Joker cell in each .betting-container. */
-.joker-bet {
-  grid-area: middle; /* aligns with "diamond-spade middle heart-spade" row */
-  background-color: var(--betting-container-color) !important;
-  border: 1px solid #666;
-  cursor: pointer;
-  position: relative; 
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  transition: background-color 0.2s;
+.hud-toggle-btn {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 1000;
+  background: var(--maroon);
+  color: var(--gold-accent);
+  border: 1px solid var(--gold-accent);
+  padding: 0.5rem 1rem;
+  font-family: 'Rye';
   border-radius: 4px;
-}
-
-/* Gold-colored Joker icon (using the Unicode 🃏). 
-   Adjust font-size and positioning as you like. */
-.joker-bet::before {
-  content: "";
-  display: block;
-  background: url("/svg/joker-gold.svg") no-repeat center;
-  background-size: contain;
-  width: 70%;  /* Adjust to taste */
-  height: 70%;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  opacity: 1;
-}
-
-.joker-bet:hover {
-  background-color: rgba(128, 0, 0, 0.85) !important;
-}
-
-/* Add near the other bet classes */
-.ace-bet {
-  grid-area: placeholder;  /* Same area used by .placeholder */
-  background-color: var(--betting-container-color) !important;
-  border: 1px solid #666;
   cursor: pointer;
-  position: relative; 
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  transition: background-color 0.2s;
-  border-radius: 4px;
-  color: #FFD700 !important; /* gold, matching Odd/Even text */
+  box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
 }
 
-.ace-bet::before {
-  content: "A";
-  font-size: 2rem;
-  color: #FFD700 !important;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  opacity: 1;
-  pointer-events: none;
-}
-
-.ace-bet:hover {
-  background-color: rgba(128, 0, 0, 0.85) !important;
-}
-
-/* Add styles for the new "lowest", "middle", and "highest" bet cells. 
-   Make them look similar to .odd-even-bet, with gold text, maroon background, etc. */
-
-.lowest-bet, .middle-bet, .highest-bet {
-  grid-area: auto; /* We'll set each area individually below. */
-  background-color: var(--betting-container-color) !important;
-  color: #FFD700 !important; /* Gold text */
-  border: 1px solid #666;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  transition: background-color 0.2s;
-  border-radius: 4px;
-}
-
-/* Explicitly tie each to the grid-area name assigned above */
-.lowest-bet {
-  grid-area: lowest;
-}
-.middle-bet {
-  grid-area: midcard; /* matches "midcard" in grid-template-areas */
-}
-.highest-bet {
-  grid-area: highest;
-}
-
-/* Hover effect like the other bets */
-.lowest-bet:hover,
-.middle-bet:hover,
-.highest-bet:hover {
-  background-color: rgba(128, 0, 0, 0.85) !important;
-}
-
-/* Near the other heading or bet styles: */
-.srm-title {
-  color: #FFD700 !important; /* Gold color used elsewhere */
-  /* Add any other styling you like, e.g. font-size, text-shadow, etc. */
-}
-
-h1.srm-title {
-  color: #FFD700 !important; /* Gold */
-}
-
-/* Overlay covers the entire screen, darkening it. */
-#payout-results {
-  display: none; /* Hidden by default; shown via JS */
+.player-sidebar {
   position: fixed;
   top: 0;
+  left: -300px; /* Hidden by default */
+  width: 280px;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.9);
+  border-right: 2px solid var(--gold-accent);
+  transition: left 0.3s ease;
+  z-index: 2000;
+  padding: 1rem;
+  box-sizing: border-box;
+  color: var(--gold-accent);
+}
+
+.player-sidebar.open {
   left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.6);
-  z-index: 9999;
-  /* Use flex to center the .payout-inner box */
+}
+
+.sidebar-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-}
-
-/* When JS sets `style="display:block"`, keep it as flex: */
-#payout-results[style*="block"] {
-  display: flex !important;
-}
-
-/* A single "card" container for the round results */
-.payout-inner {
-  background-color: var(--betting-container-color);
-  color: #FFD700 !important;
-  border: 2px solid #FFD700;
-  border-radius: 8px;
-  padding: 1.5rem;
-  max-width: 450px;
-  width: 90%; /* adapt as needed for responsiveness */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  /* optional: give it a slight box-shadow for a "card" look */
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-}
-
-.payout-inner h3 {
-  margin-top: 0;
+  border-bottom: 1px solid var(--gold-dim);
+  padding-bottom: 0.5rem;
   margin-bottom: 1rem;
-  text-align: center;
 }
 
-#payout-results-list {
-  width: 100%;
-  margin-bottom: 1rem;
-  /* If you want them stacked with spacing: */
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-#close-payout-results {
+.hud-close-btn {
+  background: none;
+  border: none;
+  color: var(--gold-accent);
+  font-size: 1.5rem;
   cursor: pointer;
-  padding: 0.5rem 1rem;
-  border: 2px solid #FFD700;
-  background: #800000; /* or same var color, if you like */
-  color: #FFD700 !important;
-  border-radius: 4px;
-  font-weight: bold;
-  font-size: 1rem;
-  transition: background-color 0.2s;
 }
 
-/* Hover effect on the OK button, optional */
-#close-payout-results:hover {
-  background-color: rgba(128, 0, 0, 0.85);
-}
-
-/* Add these styles for the payout results table */
-.payout-inner table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 1rem 0;
-  color: #FFD700;
-}
-
-.payout-inner th,
-.payout-inner td {
-  padding: 0.5rem;
-  text-align: left;
-  border-bottom: 1px solid rgba(255, 215, 0, 0.3);
-}
-
-.payout-inner th {
-  font-weight: bold;
-  text-transform: uppercase;
-  font-size: 0.9rem;
-}
-
-.payout-inner tbody tr:hover {
-  background-color: rgba(255, 215, 0, 0.1);
-}
-
-/* Make the results container scrollable if many bets */
-#payout-results-list {
-  max-height: 400px;
+.balance-list {
+  max-height: calc(100vh - 150px);
   overflow-y: auto;
 }
 
-/* Ensure last row doesn't have a border */
-.payout-inner tr:last-child td {
-  border-bottom: none;
+.balance-item {
+  padding: 0.5rem;
+  border-bottom: 1px solid #333;
 }
 
-/* For every clickable bet cell: suit-quad, border-bet, etc.,
-   make sure we allow absolutely positioned children to locate themselves
-   within that parent's boundaries. */
-
-.suit-quad,
-.border-bet,
-.odd-even-bet,
-.joker-bet,
-.ace-bet,
-.lowest-bet,
-.middle-bet,
-.highest-bet {
-  position: relative; /* REQUIRED for absolutely-positioned .chip children */
-  overflow: hidden;   /* optional to prevent chips from spilling out of the cell */
-  /* If the cell has zero height, ensure something like an aspect-ratio or fixed height. */
-  margin: 0;
-  padding: 0;
-  border: 1px solid #666;
+.action-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 60px;
+  background: rgba(0, 0, 0, 0.95);
+  border-top: 2px solid var(--gold-accent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
   box-sizing: border-box;
+  z-index: 1000;
 }
 
-/* Add ::before pseudo-elements for L/M/H text, similar to the ace-bet */
-.lowest-bet::before {
-  content: "L";
-  font-size: 2rem;
-  color: #FFD700 !important;
-  position: absolute;
-  top: 50%;
+.my-balance {
+  font-family: 'Rye';
+  font-size: 1.2rem;
+  color: var(--gold-accent);
+}
+
+.dealer-controls {
+    margin-left: auto; /* Push to right */
+}
+
+.dealer-button {
+  padding: 0.5rem 1.5rem;
+  background: var(--maroon);
+  color: var(--gold-accent);
+  border: 1px solid var(--gold-accent);
+  font-family: 'Rye';
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+
+.dealer-button:hover {
+  background: var(--maroon-dark);
+  box-shadow: 0 0 10px var(--gold-accent);
+}
+
+/* =========================================
+   Toast Notifications
+   ========================================= */
+
+#toast-container {
+  position: fixed;
+  top: 20px;
   left: 50%;
-  transform: translate(-50%, -50%);
-  opacity: 1;
-  pointer-events: none;
+  transform: translateX(-50%);
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none; /* Let clicks pass through */
 }
 
-.middle-bet::before {
-  content: "M";
-  font-size: 2rem;
-  color: #FFD700 !important;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  opacity: 1;
-  pointer-events: none;
+.toast {
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 4px;
+  border: 1px solid var(--gold-accent);
+  font-family: 'Roboto';
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  opacity: 0;
+  transform: translateY(-20px);
+  animation: toastIn 0.3s forwards;
 }
 
-.highest-bet::before {
-  content: "H";
-  font-size: 2rem;
-  color: #FFD700 !important;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  opacity: 1;
-  pointer-events: none;
+.toast.error { border-color: #ff4444; color: #ffcccc; }
+.toast.success { 
+    border-color: #44ff44; 
+    color: #ccffcc; 
+    font-size: 1.2rem;
+    background: rgba(0, 40, 0, 0.9);
+    border: 2px solid #D4AF37;
+    box-shadow: 0 0 15px #D4AF37;
+    font-family: 'Rye';
 }
 
-/* Remove the direct text content from these elements */
-.lowest-bet, .middle-bet, .highest-bet {
-  color: transparent; /* Hide the original text content */
+@keyframes toastIn {
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* Increase font size for Odd / Even so all match */
-.odd-even-bet {
-  font-size: 2rem;
+@keyframes toastOut {
+  to { opacity: 0; transform: translateY(-20px); }
 }
 
-/* Add symbols to the combined-suit (two-suit) betting areas */
-.border-bet-diamond-heart::before,
-.border-bet-diamond-spade::before,
-.border-bet-heart-club::before,
-.border-bet-spade-club::before {
-  content: ""; /* default; we override below */
-  font-size: 2rem;
-  color: #FFD700 !important; /* Gold, matching single-suit cells */
-  position: absolute;
-  line-height: 1;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
+/* =========================================
+   Result Overlay
+   ========================================= */
+#payout-results {
+    background: rgba(0,0,0,0.8) !important;
 }
 
-/* Individually assign suit combos for each border-bet  */
-.border-bet-diamond-heart::before {
-  content: "♦|♥";
+.payout-inner {
+    background: linear-gradient(135deg, #222, #000);
+    border: 2px solid var(--gold-accent);
+    box-shadow: 0 0 20px var(--gold-accent);
+    color: var(--gold-accent) !important;
+    font-family: 'Roboto';
+    padding: 1rem;
+    max-width: 90%;
 }
-.border-bet-diamond-spade::before {
-  content: "♦|♠";
+
+.payout-inner h3 {
+    font-family: 'Rye';
+    font-size: 1.5rem;
+    color: var(--gold-accent);
 }
-.border-bet-heart-club::before {
-  content: "♥|♣";
-}
-.border-bet-spade-club::before {
-  content: "♠|♣";
+
+/* =========================================
+   Responsive
+   ========================================= */
+@media (max-width: 600px) {
+  .betting-container {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    aspect-ratio: 3/5; /* maintain proportions */
+  }
+  
+  :root {
+      --card-width: 80px;
+      --card-height: 112px;
+  }
+  
+  .srm-title {
+      font-size: 1.5rem;
+  }
+  
+  .dealer-button {
+      padding: 0.3rem 0.8rem;
+      font-size: 0.9rem;
+  }
 }

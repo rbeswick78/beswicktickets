@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Steal Ryan's Money - Game Board</title>
+  <!-- Google Fonts: Rye for headers, Roboto for UI -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Rye&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/srm.css" />
 </head>
 <body
@@ -10,131 +15,188 @@
   data-current-user-id="<%= currentUserId %>"
   data-dealer-id="<%= game.dealer._id.toString() %>"
 >
-  <h1 class="srm-title">Steal Ryan's Money</h1>
+  <!-- Toast Notification Container -->
+  <div id="toast-container"></div>
 
-  <div id="card-container">
-    <div class="card-section">
-      <div class="card-slot" id="card-slot-1">
-        <img src="/svg/cards/2B.svg" alt="Card Back" style="max-width: 100%; max-height: 100%;" />
+  <div class="game-wrapper">
+    <header class="game-header">
+        <h1 class="srm-title">Steal Ryan's Money</h1>
+    </header>
+
+    <div id="card-container">
+      <!-- Card 1 -->
+      <div class="card-section">
+        <div class="card-slot" id="card-slot-1">
+          <div class="card-flip-container">
+            <div class="card-inner">
+              <div class="card-front">
+                <img src="/svg/cards/2B.svg" alt="Card Back" />
+              </div>
+              <div class="card-back">
+                <img src="" class="card-face-img" alt="Card Face" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="betting-container" id="betting-container-1">
+          <div class="suit-quad suit-diamond" data-spot-id="card1-suit-♦"></div>
+          <div class="suit-quad suit-heart"   data-spot-id="card1-suit-♥"></div>
+          <div class="suit-quad suit-spade"   data-spot-id="card1-suit-♠"></div>
+          <div class="suit-quad suit-club"    data-spot-id="card1-suit-♣"></div>
+
+          <div class="border-bet border-bet-diamond-heart" 
+               data-spot-id="card1-suits-♦♥"
+               title="Bet on Diamonds OR Hearts"></div>
+          <div class="border-bet border-bet-diamond-spade" 
+               data-spot-id="card1-suits-♦♠"
+               title="Bet on Diamonds OR Spades"></div>
+          <div class="border-bet border-bet-heart-club" 
+               data-spot-id="card1-suits-♥♣"
+               title="Bet on Hearts OR Clubs"></div>
+          <div class="border-bet border-bet-spade-club" 
+               data-spot-id="card1-suits-♠♣"
+               title="Bet on Spades OR Clubs"></div>
+
+          <div class="joker-bet" data-spot-id="card1-joker"></div>
+
+          <div class="odd-even-bet odd-bet" data-spot-id="card1-odd" title="Bet on Odd">Odd</div>
+          
+          <div class="ace-bet" data-spot-id="card1-ace" title="Bet on Ace"></div>
+
+          <div class="odd-even-bet even-bet" data-spot-id="card1-even" title="Bet on Even">Even</div>
+
+          <div class="lowest-bet" data-spot-id="card1-low" title="Bet on Lowest card"></div>
+          <div class="middle-bet" data-spot-id="card1-mid" title="Bet on Middle card"></div>
+          <div class="highest-bet" data-spot-id="card1-high" title="Bet on Highest card"></div>
+        </div>
       </div>
-      <div class="betting-container" id="betting-container-1">
-        <div class="suit-quad suit-diamond" data-spot-id="card1-suit-♦"></div>
-        <div class="suit-quad suit-heart"   data-spot-id="card1-suit-♥"></div>
-        <div class="suit-quad suit-spade"   data-spot-id="card1-suit-♠"></div>
-        <div class="suit-quad suit-club"    data-spot-id="card1-suit-♣"></div>
 
-        <div class="border-bet border-bet-diamond-heart" 
-             data-spot-id="card1-suits-♦♥"
-             title="Bet on Diamonds OR Hearts"></div>
-        <div class="border-bet border-bet-diamond-spade" 
-             data-spot-id="card1-suits-♦♠"
-             title="Bet on Diamonds OR Spades"></div>
-        <div class="border-bet border-bet-heart-club" 
-             data-spot-id="card1-suits-♥♣"
-             title="Bet on Hearts OR Clubs"></div>
-        <div class="border-bet border-bet-spade-club" 
-             data-spot-id="card1-suits-♠♣"
-             title="Bet on Spades OR Clubs"></div>
+      <!-- Card 2 -->
+      <div class="card-section">
+        <div class="card-slot" id="card-slot-2">
+            <div class="card-flip-container">
+                <div class="card-inner">
+                  <div class="card-front">
+                    <img src="/svg/cards/2B.svg" alt="Card Back" />
+                  </div>
+                  <div class="card-back">
+                    <img src="" class="card-face-img" alt="Card Face" />
+                  </div>
+                </div>
+              </div>
+        </div>
+        <div class="betting-container" id="betting-container-2">
+          <div class="suit-quad suit-diamond" data-spot-id="card2-suit-♦"></div>
+          <div class="suit-quad suit-heart"   data-spot-id="card2-suit-♥"></div>
+          <div class="suit-quad suit-spade"   data-spot-id="card2-suit-♠"></div>
+          <div class="suit-quad suit-club"    data-spot-id="card2-suit-♣"></div>
 
-        <div class="joker-bet" data-spot-id="card1-joker"></div>
+          <div class="border-bet border-bet-diamond-heart" 
+               data-spot-id="card2-suits-♦♥"
+               title="Bet on Diamonds OR Hearts"></div>
+          <div class="border-bet border-bet-diamond-spade" 
+               data-spot-id="card2-suits-♦♠"
+               title="Bet on Diamonds OR Spades"></div>
+          <div class="border-bet border-bet-heart-club" 
+               data-spot-id="card2-suits-♥♣"
+               title="Bet on Hearts OR Clubs"></div>
+          <div class="border-bet border-bet-spade-club" 
+               data-spot-id="card2-suits-♠♣"
+               title="Bet on Spades OR Clubs"></div>
 
-        <div class="odd-even-bet odd-bet" data-spot-id="card1-odd" title="Bet on Odd">Odd</div>
-        
-        <div class="ace-bet" data-spot-id="card1-ace" title="Bet on Ace"></div>
+          <div class="joker-bet" data-spot-id="card2-joker"></div>
 
-        <div class="odd-even-bet even-bet" data-spot-id="card1-even" title="Bet on Even">Even</div>
+          <div class="odd-even-bet odd-bet" data-spot-id="card2-odd" title="Bet on Odd">Odd</div>
+          
+          <div class="ace-bet" data-spot-id="card2-ace" title="Bet on Ace"></div>
 
-        <div class="lowest-bet" data-spot-id="card1-low" title="Bet on Lowest card"></div>
-        <div class="middle-bet" data-spot-id="card1-mid" title="Bet on Middle card"></div>
-        <div class="highest-bet" data-spot-id="card1-high" title="Bet on Highest card"></div>
+          <div class="odd-even-bet even-bet" data-spot-id="card2-even" title="Bet on Even">Even</div>
+
+          <div class="lowest-bet" data-spot-id="card2-low"    title="Bet on Lowest card"></div>
+          <div class="middle-bet" data-spot-id="card2-mid"   title="Bet on Middle card"></div>
+          <div class="highest-bet" data-spot-id="card2-high" title="Bet on Highest card"></div>
+        </div>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="card-section">
+        <div class="card-slot" id="card-slot-3">
+            <div class="card-flip-container">
+                <div class="card-inner">
+                  <div class="card-front">
+                    <img src="/svg/cards/2B.svg" alt="Card Back" />
+                  </div>
+                  <div class="card-back">
+                    <img src="" class="card-face-img" alt="Card Face" />
+                  </div>
+                </div>
+              </div>
+        </div>
+        <div class="betting-container" id="betting-container-3">
+          <div class="suit-quad suit-diamond" data-spot-id="card3-suit-♦"></div>
+          <div class="suit-quad suit-heart"   data-spot-id="card3-suit-♥"></div>
+          <div class="suit-quad suit-spade"   data-spot-id="card3-suit-♠"></div>
+          <div class="suit-quad suit-club"    data-spot-id="card3-suit-♣"></div>
+
+          <div class="border-bet border-bet-diamond-heart" 
+               data-spot-id="card3-suits-♦♥"
+               title="Bet on Diamonds OR Hearts"></div>
+          <div class="border-bet border-bet-diamond-spade" 
+               data-spot-id="card3-suits-♦♠"
+               title="Bet on Diamonds OR Spades"></div>
+          <div class="border-bet border-bet-heart-club" 
+               data-spot-id="card3-suits-♥♣"
+               title="Bet on Hearts OR Clubs"></div>
+          <div class="border-bet border-bet-spade-club" 
+               data-spot-id="card3-suits-♠♣"
+               title="Bet on Spades OR Clubs"></div>
+
+          <div class="joker-bet" data-spot-id="card3-joker"></div>
+
+          <div class="odd-even-bet odd-bet" data-spot-id="card3-odd" title="Bet on Odd">Odd</div>
+          
+          <div class="ace-bet" data-spot-id="card3-ace" title="Bet on Ace"></div>
+
+          <div class="odd-even-bet even-bet" data-spot-id="card3-even" title="Bet on Even">Even</div>
+
+          <div class="lowest-bet" data-spot-id="card3-low"    title="Bet on Lowest card"></div>
+          <div class="middle-bet" data-spot-id="card3-mid"   title="Bet on Middle card"></div>
+          <div class="highest-bet" data-spot-id="card3-high" title="Bet on Highest card"></div>
+        </div>
       </div>
     </div>
 
-    <div class="card-section">
-      <div class="card-slot" id="card-slot-2">
-        <img src="/svg/cards/2B.svg" alt="Card Back" style="max-width: 100%; max-height: 100%;" />
-      </div>
-      <div class="betting-container" id="betting-container-2">
-        <div class="suit-quad suit-diamond" data-spot-id="card2-suit-♦"></div>
-        <div class="suit-quad suit-heart"   data-spot-id="card2-suit-♥"></div>
-        <div class="suit-quad suit-spade"   data-spot-id="card2-suit-♠"></div>
-        <div class="suit-quad suit-club"    data-spot-id="card2-suit-♣"></div>
+    <!-- HUD / Sidebar Toggle -->
+    <button id="hud-toggle" class="hud-toggle-btn" aria-label="Toggle Player Menu">
+        ☰ Players
+    </button>
 
-        <div class="border-bet border-bet-diamond-heart" 
-             data-spot-id="card2-suits-♦♥"
-             title="Bet on Diamonds OR Hearts"></div>
-        <div class="border-bet border-bet-diamond-spade" 
-             data-spot-id="card2-suits-♦♠"
-             title="Bet on Diamonds OR Spades"></div>
-        <div class="border-bet border-bet-heart-club" 
-             data-spot-id="card2-suits-♥♣"
-             title="Bet on Hearts OR Clubs"></div>
-        <div class="border-bet border-bet-spade-club" 
-             data-spot-id="card2-suits-♠♣"
-             title="Bet on Spades OR Clubs"></div>
-
-        <div class="joker-bet" data-spot-id="card2-joker"></div>
-
-        <div class="odd-even-bet odd-bet" data-spot-id="card2-odd" title="Bet on Odd">Odd</div>
+    <!-- Sidebar / Drawer -->
+    <div id="player-sidebar" class="player-sidebar">
+        <div class="sidebar-header">
+            <h3>Table Info</h3>
+            <button id="hud-close" class="hud-close-btn">&times;</button>
+        </div>
+        <div id="balance-list" class="balance-list"></div>
+    </div>
+    
+    <!-- Action Bar (Fixed Bottom) -->
+    <div id="action-bar" class="action-bar">
+        <div class="my-balance">
+            <span class="label">My Balance:</span>
+            <span id="my-balance-amount" class="amount">Loading...</span>
+        </div>
         
-        <div class="ace-bet" data-spot-id="card2-ace" title="Bet on Ace"></div>
-
-        <div class="odd-even-bet even-bet" data-spot-id="card2-even" title="Bet on Even">Even</div>
-
-        <div class="lowest-bet" data-spot-id="card2-low"    title="Bet on Lowest card"></div>
-        <div class="middle-bet" data-spot-id="card2-mid"   title="Bet on Middle card"></div>
-        <div class="highest-bet" data-spot-id="card2-high" title="Bet on Highest card"></div>
-      </div>
+        <% if (game.dealer._id.toString() === currentUserId) { %>
+            <div class="dealer-controls">
+                <button id="deal-button" class="dealer-button">Deal</button>
+            </div>
+        <% } %>
     </div>
 
-    <div class="card-section">
-      <div class="card-slot" id="card-slot-3">
-        <img src="/svg/cards/2B.svg" alt="Card Back" style="max-width: 100%; max-height: 100%;" />
-      </div>
-      <div class="betting-container" id="betting-container-3">
-        <div class="suit-quad suit-diamond" data-spot-id="card3-suit-♦"></div>
-        <div class="suit-quad suit-heart"   data-spot-id="card3-suit-♥"></div>
-        <div class="suit-quad suit-spade"   data-spot-id="card3-suit-♠"></div>
-        <div class="suit-quad suit-club"    data-spot-id="card3-suit-♣"></div>
-
-        <div class="border-bet border-bet-diamond-heart" 
-             data-spot-id="card3-suits-♦♥"
-             title="Bet on Diamonds OR Hearts"></div>
-        <div class="border-bet border-bet-diamond-spade" 
-             data-spot-id="card3-suits-♦♠"
-             title="Bet on Diamonds OR Spades"></div>
-        <div class="border-bet border-bet-heart-club" 
-             data-spot-id="card3-suits-♥♣"
-             title="Bet on Hearts OR Clubs"></div>
-        <div class="border-bet border-bet-spade-club" 
-             data-spot-id="card3-suits-♠♣"
-             title="Bet on Spades OR Clubs"></div>
-
-        <div class="joker-bet" data-spot-id="card3-joker"></div>
-
-        <div class="odd-even-bet odd-bet" data-spot-id="card3-odd" title="Bet on Odd">Odd</div>
-        
-        <div class="ace-bet" data-spot-id="card3-ace" title="Bet on Ace"></div>
-
-        <div class="odd-even-bet even-bet" data-spot-id="card3-even" title="Bet on Even">Even</div>
-
-        <div class="lowest-bet" data-spot-id="card3-low"    title="Bet on Lowest card"></div>
-        <div class="middle-bet" data-spot-id="card3-mid"   title="Bet on Middle card"></div>
-        <div class="highest-bet" data-spot-id="card3-high" title="Bet on Highest card"></div>
-      </div>
-    </div>
-  </div>
-
-  <div id="player-balances" class="player-balances">
-    <h3>Player Balances</h3>
-    <div id="balance-list"></div>
-    <% if (game.dealer._id.toString() === currentUserId) { %>
-      <button id="deal-button" class="dealer-button">Deal</button>
-    <% } %>
-  </div>
+  </div> <!-- end game-wrapper -->
 
   <div id="payout-results" style="display: none;">
-    <!-- A single container for the entire results panel -->
     <div class="payout-inner">
       <h3>Round Results</h3>
       <div id="payout-results-list"></div>

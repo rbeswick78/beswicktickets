@@ -14,21 +14,13 @@ let placeYourBetsAudio;
 let stealAudio;
 let ryansAudio;
 let moneyAudio;
-let roundResultsAudio; // NEW: Added for round-results.mp3
+let roundResultsAudio; 
 
 /**
  * A map to store userId -> color
  */
 const userColorMap = {};
 const socket = window.io();
-const possibleColors = [
-  '#f44336',
-  '#2196f3',
-  '#4caf50',
-  '#ff9800',
-  '#9c27b0',
-  '#e91e63',
-];
 
 /**
  * Helper to retrieve assigned color
@@ -60,6 +52,30 @@ function getCardImageSrc(card) {
 }
 
 /**
+ * Show a toast notification
+ * @param {string} message 
+ * @param {string} type 'error' | 'success' | 'info'
+ */
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+
+    container.appendChild(toast);
+
+    // Remove after 3 seconds
+    setTimeout(() => {
+        toast.style.animation = 'toastOut 0.3s forwards';
+        toast.addEventListener('animationend', () => {
+            toast.remove();
+        });
+    }, 3000);
+}
+
+/**
  * Create a chip element, including the click-to-remove logic for the current user only
  */
 function createChipElement(userId, amount, spotId) {
@@ -68,7 +84,7 @@ function createChipElement(userId, amount, spotId) {
   chipEl.dataset.userId = userId;
   chipEl.dataset.amount = amount;
   chipEl.dataset.spotId = spotId;
-  chipEl.style.backgroundColor = getUserColor(userId);
+  chipEl.style.color = getUserColor(userId); // Use currentColor in CSS
   chipEl.textContent = amount;
 
   // Only allow removal if this chip belongs to the current user
@@ -87,14 +103,36 @@ function createChipElement(userId, amount, spotId) {
 }
 
 /**
- * Reveal a single card's image in the specified DOM slot
+ * Reveal a single card's image in the specified DOM slot using 3D flip
  */
 function revealCard(slotEl, card, altText) {
-  const img = slotEl.querySelector('img');
-  if (img) {
-    img.src = getCardImageSrc(card);
-    img.alt = altText;
+  // Find the inner container for the flip
+  const cardInner = slotEl.querySelector('.card-inner');
+  // Find the back face image (which will be revealed)
+  const faceImg = slotEl.querySelector('.card-back img');
+  
+  if (cardInner && faceImg) {
+    faceImg.src = getCardImageSrc(card);
+    faceImg.alt = altText;
+    
+    // Trigger the flip
+    cardInner.classList.add('flipped');
   }
+}
+
+/**
+ * Reset a card slot to face down
+ */
+function resetCard(slotEl) {
+    const cardInner = slotEl.querySelector('.card-inner');
+    if (cardInner) {
+        cardInner.classList.remove('flipped');
+        // Optional: clear the src after animation to avoid flashing old card on next flip
+        setTimeout(() => {
+            const faceImg = slotEl.querySelector('.card-back img');
+            if(faceImg) faceImg.src = '';
+        }, 800);
+    }
 }
 
 /**
@@ -104,6 +142,9 @@ function revealCard(slotEl, card, altText) {
 function showPayoutResults(betResults) {
   const payoutResultsList = document.getElementById('payout-results-list');
   payoutResultsList.innerHTML = '';
+
+  // Calculate total net for current user for celebration
+  let myNet = 0;
 
   // Create table
   const table = document.createElement('table');
@@ -130,7 +171,12 @@ function showPayoutResults(betResults) {
   });
 
   betResults.forEach((result) => {
-    const { username, cardNumber, betDescr, wager, net } = result;
+    const { userId, username, cardNumber, betDescr, wager, net } = result;
+    
+    if (userId === currentUserId) {
+        myNet += net;
+    }
+
     const row = document.createElement('tr');
 
     // Format net with sign
@@ -158,6 +204,11 @@ function showPayoutResults(betResults) {
 
   // Show the overlay
   document.getElementById('payout-results').style.display = 'block';
+
+  // Celebration if won
+  if (myNet > 0) {
+      showToast(`You won ${myNet} tickets! 🎉`, 'success');
+  }
 
   // If dealer, make sure button says "Clear"
   if (isDealer) {
@@ -238,6 +289,8 @@ function positionChips(parentEl) {
   const gap = 2;
 
   chipEls.forEach((chip, index) => {
+    // Simple stacking/grid logic
+    // For the small 3D chips, maybe just offset them slightly if there are many
     const row = Math.floor(index / 3);
     const col = index % 3;
     const topPx = row * (chipSize + gap);
@@ -263,68 +316,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const payoutResultsContainer = document.getElementById('payout-results');
   const closePayoutResultsBtn = document.getElementById('close-payout-results');
   const balanceList = document.getElementById('balance-list');
+  const myBalanceDisplay = document.getElementById('my-balance-amount');
 
   // -------------------------------------------------------------
-  //  Make player-balances container draggable
+  //  HUD / Sidebar Logic
   // -------------------------------------------------------------
-  const playerBalances = document.getElementById('player-balances');
-  playerBalances.style.position = 'absolute';
+  const hudToggle = document.getElementById('hud-toggle');
+  const hudClose = document.getElementById('hud-close');
+  const sidebar = document.getElementById('player-sidebar');
 
-  function makeElementDraggable(element) {
-    let isDragging = false;
-    let offsetX = 0;
-    let offsetY = 0;
-
-    // Helper functions for starting, moving, and ending a drag
-    const startDrag = (clientX, clientY) => {
-      isDragging = true;
-      offsetX = clientX - element.offsetLeft;
-      offsetY = clientY - element.offsetTop;
-      element.style.zIndex = 9999;
-    };
-
-    const doDrag = (clientX, clientY) => {
-      if (!isDragging) return;
-      const x = clientX - offsetX;
-      const y = clientY - offsetY;
-      element.style.left = `${x}px`;
-      element.style.top = `${y}px`;
-    };
-
-    const endDrag = () => {
-      isDragging = false;
-    };
-
-    // Mouse events
-    element.addEventListener('mousedown', (event) => {
-      startDrag(event.clientX, event.clientY);
-    });
-
-    document.addEventListener('mousemove', (event) => {
-      doDrag(event.clientX, event.clientY);
-    });
-
-    document.addEventListener('mouseup', endDrag);
-
-    // Touch events for mobile
-    element.addEventListener('touchstart', (event) => {
-      // Prevent default so we can handle the touch ourselves
-      event.preventDefault();
-      const touch = event.touches[0];
-      startDrag(touch.clientX, touch.clientY);
-    }, { passive: false });
-
-    document.addEventListener('touchmove', (event) => {
-      event.preventDefault();
-      const touch = event.touches[0];
-      doDrag(touch.clientX, touch.clientY);
-    }, { passive: false });
-
-    document.addEventListener('touchend', endDrag);
-    // (Optional) also listen for 'touchcancel' if you want to handle canceled drags
+  if (hudToggle && sidebar) {
+      hudToggle.addEventListener('click', () => {
+          sidebar.classList.add('open');
+      });
   }
 
-  makeElementDraggable(playerBalances);
+  if (hudClose && sidebar) {
+      hudClose.addEventListener('click', () => {
+          sidebar.classList.remove('open');
+      });
+  }
 
   // -------------------------------------------------------------
   //  Initialize and load audio files
@@ -341,12 +352,9 @@ document.addEventListener('DOMContentLoaded', () => {
   moneyAudio = new Audio('/sound/money.mp3');
   moneyAudio.load();
 
-  roundResultsAudio = new Audio('/sound/round-results.mp3'); // NEW
-  roundResultsAudio.load(); // NEW
+  roundResultsAudio = new Audio('/sound/round-results.mp3'); 
+  roundResultsAudio.load(); 
 
-  // -------------------------------------------------------------
-  //  End draggable code; below is your existing code.
-  // -------------------------------------------------------------
 
   // Helper for updating or creating a new player-balance item
   function updatePlayerBalance(userId, username, balance) {
@@ -357,8 +365,17 @@ document.addEventListener('DOMContentLoaded', () => {
       balanceItem.className = `balance-item${userId === currentUserId ? ' current-user' : ''}`;
       balanceList.appendChild(balanceItem);
     }
+    // Update color just in case
     balanceItem.style.color = getUserColor(userId);
     balanceItem.textContent = `${username}: ${balance}`;
+
+    // Also update the fixed footer balance if it's me
+    if (userId === currentUserId && myBalanceDisplay) {
+        myBalanceDisplay.textContent = balance;
+        // Flash effects?
+        myBalanceDisplay.style.color = '#fff';
+        setTimeout(() => { myBalanceDisplay.style.color = ''; }, 300);
+    }
   }
 
   // Join Socket.IO room for this game
@@ -512,6 +529,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Deal or Clear
+  // Note: dealButton might be null if not dealer
   if (dealButton) {
     dealButton.addEventListener('click', () => {
       if (dealButton.textContent === 'Deal') {
@@ -541,22 +559,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     currentRoundStatus = 'betting';
 
-    // Reset facedown cards
-    const img1 = cardSlot1.querySelector('img');
-    if (img1) {
-      img1.src = '/svg/cards/2B.svg';
-      img1.alt = 'Card Back';
-    }
-    const img2 = cardSlot2.querySelector('img');
-    if (img2) {
-      img2.src = '/svg/cards/2B.svg';
-      img2.alt = 'Card Back';
-    }
-    const img3 = cardSlot3.querySelector('img');
-    if (img3) {
-      img3.src = '/svg/cards/2B.svg';
-      img3.alt = 'Card Back';
-    }
+    // Reset cards to face down (flip back)
+    resetCard(cardSlot1);
+    resetCard(cardSlot2);
+    resetCard(cardSlot3);
 
     // Play "place-your-bets" audio when the round is cleared
     if (placeYourBetsAudio) {
@@ -607,6 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // betError => show a popup
   socket.on('betError', (data) => {
-    alert(data.message);
+    // Replaced alert with showToast
+    showToast(data.message, 'error');
   });
 });
