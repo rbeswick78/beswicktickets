@@ -187,6 +187,13 @@ io.on('connection', (socket) => {
           await user.removeTickets(amount, `Bet placed - Game #${game.code}`);
 
           io.to(`srmGame_${gameId}`).emit('betPlaced', betData);
+
+          // Emit live balance update to all players in the game room
+          io.to(`srmGame_${gameId}`).emit('ticketUpdate', {
+            userId: user._id.toString(),
+            username: user.username,
+            ticketBalance: user.ticketBalance
+          });
       });
     } catch (error) {
       console.error('Error saving bet:', error);
@@ -278,6 +285,13 @@ io.on('connection', (socket) => {
         }));
 
         io.to(`srmGame_${gameId}`).emit('betPlacedBatch', { bets: confirmedBets });
+
+        // Emit live balance update to all players in the game room
+        io.to(`srmGame_${gameId}`).emit('ticketUpdate', {
+          userId: user._id.toString(),
+          username: user.username,
+          ticketBalance: user.ticketBalance
+        });
 
       } catch (error) {
         console.error('Error processing bet batch:', error);
@@ -401,8 +415,9 @@ io.on('connection', (socket) => {
           const user = await User.findById(userId);
           if (user) {
             await user.addTickets(amount, `Bet removed - Game #${game.code}`);
-            io.emit('ticketUpdate', {
-              userId: user._id,
+            // Emit live balance update to all players in the game room
+            io.to(`srmGame_${gameId}`).emit('ticketUpdate', {
+              userId: user._id.toString(),
               username: user.username,
               ticketBalance: user.ticketBalance,
             });
