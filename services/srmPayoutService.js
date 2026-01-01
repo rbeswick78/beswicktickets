@@ -18,6 +18,7 @@ async function computePayouts(gameId, chosenCards, io) {
 
     const bets = game.bets || [];
     const betResults = [];
+    const longShotWins = []; // Track Joker (26x) and Ace (13x) wins
 
     // Helper to parse rank
     function parseRank(rankStr) {
@@ -134,6 +135,9 @@ async function computePayouts(gameId, chosenCards, io) {
       const cardIndex = parseInt(spotId.charAt(4), 10) - 1;
       const chosenCard = chosenCards[cardIndex];
 
+      // Track if this bet is a long shot win
+      let isLongShotWin = null;
+
       if (!chosenCard) {
         // No card => no payout
         totalPayout = 0;
@@ -142,6 +146,7 @@ async function computePayouts(gameId, chosenCards, io) {
         if (spotId.endsWith('-joker')) {
           // Pay out 26× stake (2 jokers out of 52 odds).
           totalPayout = 26 * amount;
+          isLongShotWin = { type: 'joker', multiplier: 26 };
         } else {
           // They didn't bet on the Joker => lose
           totalPayout = 0;
@@ -181,15 +186,16 @@ async function computePayouts(gameId, chosenCards, io) {
         const numericRank = parseRank(chosenCard.rank);
         if (numericRank === 1) {
           totalPayout = 13 * amount;
+          isLongShotWin = { type: 'ace', multiplier: 13 };
         }
       }
 
       // NEW: Low / Mid / High Bets
       else if (spotId.endsWith('-low') || spotId.endsWith('-mid') || spotId.endsWith('-high')) {
-        // If there's any joker among chosenCards => lose automatically
+        // If there's any joker among chosenCards => push (return bet)
         const anyJoker = chosenCards.some(c => c.isJoker);
         if (anyJoker) {
-          totalPayout = 0;
+          totalPayout = amount; // Push - return the bet
         } else {
           // Determine the position of this card
           const position = getCardPosition(cardIndex, chosenCards);
@@ -258,6 +264,26 @@ async function computePayouts(gameId, chosenCards, io) {
         net: displayedResult,
       });
 
+      // If this was a long shot win, add to the list for celebration
+      if (isLongShotWin && totalPayout > 0) {
+        // Get the user's color from the game's players array
+        const playerInfo = game.players.find(
+          p => p._id.toString() === userId.toString()
+        );
+        const userColor = playerInfo?.color || '#d4af37';
+
+        longShotWins.push({
+          type: isLongShotWin.type,
+          winnerId: userId.toString(),
+          winnerName: userNameForDisplay,
+          winnerColor: userColor,
+          cardNumber: parseInt(cardNumber, 10),
+          wager: amount,
+          payout: totalPayout,
+          multiplier: isLongShotWin.multiplier,
+        });
+      }
+
       // Now update tickets if totalPayout > 0
       if (userDoc && totalPayout > 0) {
         try {
@@ -273,6 +299,12 @@ async function computePayouts(gameId, chosenCards, io) {
           console.error('Error updating user tickets:', err);
         }
       }
+    }
+
+    // Emit long shot win events for celebrations (before results modal)
+    if (longShotWins.length > 0) {
+      console.log(`Long shot wins detected: ${longShotWins.length}`);
+      io.to(`srmGame_${gameId}`).emit('longShotWins', longShotWins);
     }
 
     // Send final results to game room
