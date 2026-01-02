@@ -10,6 +10,10 @@ let finishedDealing = false;    // Track if the 3rd card is shown
 let payoutResultsCache = null;  // Store results until the flips are done
 let dealtCardsCache = null;     // Store dealt cards for results display
 
+// Ticket update caching - prevent balance spoilers during card reveal
+let ticketUpdateCache = [];     // Store ticket updates until cards finish flipping
+let isDealingPhase = false;     // Track if we're in the card reveal animation
+
 // Added audio variables
 let placeYourBetsAudio;
 let stealAudio;
@@ -1032,14 +1036,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Listen for ticketUpdate
+  // Listen for ticketUpdate - cache during dealing to prevent balance spoilers
   socket.on('ticketUpdate', (data) => {
-    updatePlayerBalance(data.userId, data.username, data.ticketBalance);
+    if (isDealingPhase) {
+      // Cache the update until cards finish flipping
+      ticketUpdateCache.push(data);
+    } else {
+      updatePlayerBalance(data.userId, data.username, data.ticketBalance);
+    }
   });
 
   // cardsDealt => do a time-staggered reveal
   socket.on('cardsDealt', async (dealData) => {
     console.log('[cardsDealt] arrived, preloading images');
+
+    // Enter dealing phase - cache any ticketUpdate events until cards finish flipping
+    isDealingPhase = true;
 
     // Cache the dealt cards for results display
     dealtCardsCache = {
@@ -1084,6 +1096,14 @@ document.addEventListener('DOMContentLoaded', () => {
       // Wait 2 more seconds => if we already have payoutResults, show them (and play round results audio)
       setTimeout(async () => {
         console.log('[cardsDealt] 6s total, check if payoutResultsCache => show overlay');
+        
+        // Apply cached ticket updates now that cards are revealed
+        ticketUpdateCache.forEach(data => {
+          updatePlayerBalance(data.userId, data.username, data.ticketBalance);
+        });
+        ticketUpdateCache = [];
+        isDealingPhase = false;
+        
         if (payoutResultsCache) {
           // Check if we have long shot wins to celebrate first
           if (longShotWinsCache && longShotWinsCache.length > 0) {
@@ -1118,6 +1138,13 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('[payoutResults] event arrived');
     if (finishedDealing) {
       setTimeout(async () => {
+        // Apply cached ticket updates now that cards are revealed
+        ticketUpdateCache.forEach(data => {
+          updatePlayerBalance(data.userId, data.username, data.ticketBalance);
+        });
+        ticketUpdateCache = [];
+        isDealingPhase = false;
+        
         // Check if we have long shot wins to celebrate first
         if (longShotWinsCache && longShotWinsCache.length > 0) {
           console.log('[payoutResults] triggering long shot celebration first');
@@ -1217,6 +1244,8 @@ document.addEventListener('DOMContentLoaded', () => {
     dealtCardsCache = null;
     longShotWinsCache = null;
     longShotCelebrationActive = false;
+    ticketUpdateCache = [];
+    isDealingPhase = false;
     
     // Sync displayed balance with actual (in case of any drift)
     displayedBalance = actualBalance;
