@@ -1003,13 +1003,22 @@ document.addEventListener('DOMContentLoaded', () => {
     data.players.forEach((player) => {
       userColorMap[player.userId] = player.color;
       
-      // Initialize LED balance for current user (no animation on load)
-      if (player.userId === currentUserId) {
-        displayedBalance = player.ticketBalance;
-        actualBalance = player.ticketBalance;
+      // During dealing phase, cache balance updates to prevent spoilers
+      if (isDealingPhase) {
+        ticketUpdateCache.push({
+          userId: player.userId,
+          username: player.username,
+          ticketBalance: player.ticketBalance
+        });
+      } else {
+        // Initialize LED balance for current user (no animation on load)
+        if (player.userId === currentUserId) {
+          displayedBalance = player.ticketBalance;
+          actualBalance = player.ticketBalance;
+        }
+        
+        updatePlayerBalance(player.userId, player.username, player.ticketBalance);
       }
-      
-      updatePlayerBalance(player.userId, player.username, player.ticketBalance);
     });
     rebuildUIFromState(data, currentUserId, isDealer);
   });
