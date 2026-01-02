@@ -562,6 +562,11 @@ async function showCardBetResults(cardNumber, allBetResults) {
     betLookup[key].wager += bet.wager;
   });
 
+  // Helper to check if a spotId is an L/M/H bet
+  function isLMHBet(spotId) {
+    return spotId.endsWith('-low') || spotId.endsWith('-mid') || spotId.endsWith('-high');
+  }
+
   // Now process each chip
   const animationPromises = [];
   
@@ -585,6 +590,20 @@ async function showCardBetResults(cardNumber, allBetResults) {
     console.log(`[showCardBetResults] Found result for chip:`, result);
     
     const spotEl = chip.parentElement;
+    
+    // Check if this is an L/M/H bet - defer resolution until all cards are revealed
+    if (isLMHBet(chipSpotId) && cardNumber < 3) {
+      // Apply pending state for L/M/H bets on cards 1 and 2
+      chip.classList.add('pending');
+      console.log(`[showCardBetResults] L/M/H bet deferred for card ${cardNumber}: ${chipSpotId}`);
+      
+      // Short animation promise for pending state
+      const animPromise = new Promise(resolve => {
+        setTimeout(resolve, 400);
+      });
+      animationPromises.push(animPromise);
+      return; // Skip normal win/lose processing for this chip
+    }
     
     // Apply win/lose effects to chips (no badges displayed)
     if (result.net > 0) {
@@ -612,6 +631,133 @@ async function showCardBetResults(cardNumber, allBetResults) {
   
   // Small extra delay for visual clarity
   await delay(300);
+}
+
+/**
+ * Resolve all pending L/M/H bets after all 3 cards have been revealed
+ * This creates a dramatic "moment of truth" where all L/M/H chips resolve simultaneously
+ * @param {Array} allBetResults - All bet results from the server
+ * @returns {Promise} - Resolves when all L/M/H animations complete
+ */
+async function resolveLMHBets(allBetResults) {
+  // Find all chips with pending state (L/M/H bets waiting for resolution)
+  const pendingChips = document.querySelectorAll('.chip.pending');
+  
+  if (pendingChips.length === 0) {
+    console.log('[resolveLMHBets] No pending L/M/H bets to resolve');
+    return;
+  }
+  
+  console.log(`[resolveLMHBets] Resolving ${pendingChips.length} pending L/M/H bets`);
+  
+  // Helper to convert suit name to symbol (same as in showCardBetResults)
+  function suitNameToSymbol(name) {
+    switch (name.toLowerCase()) {
+      case 'spades': return '♠';
+      case 'hearts': return '♥';
+      case 'diamonds': return '♦';
+      case 'clubs': return '♣';
+      default: return name;
+    }
+  }
+  
+  // Build lookup from all bet results
+  const betLookup = {};
+  allBetResults.forEach(bet => {
+    const cardNumber = bet.cardNumber;
+    let spotId = `card${cardNumber}-`;
+    const descr = bet.betDescr.toLowerCase();
+    
+    if (descr.includes(' or ')) {
+      const suits = descr.split(' or ').map(s => suitNameToSymbol(s.trim()));
+      spotId += 'suits-' + suits.join('');
+    } else if (['diamonds', 'hearts', 'spades', 'clubs'].includes(descr)) {
+      spotId += 'suit-' + suitNameToSymbol(descr);
+    } else if (descr === 'odd') {
+      spotId += 'odd';
+    } else if (descr === 'even') {
+      spotId += 'even';
+    } else if (descr === 'joker') {
+      spotId += 'joker';
+    } else if (descr === 'ace') {
+      spotId += 'ace';
+    } else if (descr === 'lowest') {
+      spotId += 'low';
+    } else if (descr === 'middle') {
+      spotId += 'mid';
+    } else if (descr === 'highest') {
+      spotId += 'high';
+    } else {
+      spotId += descr.replace(/\s+/g, '-');
+    }
+    
+    const key = `${bet.userId}:${spotId}`;
+    if (!betLookup[key]) {
+      betLookup[key] = { net: 0, wager: 0 };
+    }
+    betLookup[key].net += bet.net;
+    betLookup[key].wager += bet.wager;
+  });
+  
+  // Process each pending chip with staggered timing for dramatic effect
+  const animationPromises = [];
+  let staggerIndex = 0;
+  
+  pendingChips.forEach(chip => {
+    const chipSpotId = chip.dataset.spotId;
+    const chipUserId = chip.dataset.userId;
+    const lookupKey = `${chipUserId}:${chipSpotId}`;
+    const result = betLookup[lookupKey];
+    
+    if (!result) {
+      console.warn(`[resolveLMHBets] No result found for pending chip: ${lookupKey}`);
+      chip.classList.remove('pending');
+      return;
+    }
+    
+    const spotEl = chip.parentElement;
+    const staggerDelay = staggerIndex * 100; // 100ms stagger between chips
+    staggerIndex++;
+    
+    const animPromise = new Promise(resolve => {
+      setTimeout(() => {
+        // Remove pending state
+        chip.classList.remove('pending');
+        
+        // Apply final result state
+        if (result.net > 0) {
+          // WIN
+          chip.classList.add('winning');
+          if (spotEl) spotEl.classList.add('spot-win');
+          console.log(`[resolveLMHBets] L/M/H WIN: ${chipSpotId} net=${result.net}`);
+        } else if (result.net < 0) {
+          // LOSS
+          chip.classList.add('losing');
+          if (spotEl) spotEl.classList.add('spot-loss');
+          console.log(`[resolveLMHBets] L/M/H LOSS: ${chipSpotId} net=${result.net}`);
+        } else {
+          // PUSH (net = 0) - tie or joker dealt
+          chip.classList.add('push');
+          console.log(`[resolveLMHBets] L/M/H PUSH: ${chipSpotId} net=${result.net}`);
+        }
+        
+        // Resolve after animation completes
+        setTimeout(resolve, result.net > 0 ? 1000 : 600);
+      }, staggerDelay);
+    });
+    
+    animationPromises.push(animPromise);
+  });
+  
+  // Wait for all animations
+  if (animationPromises.length > 0) {
+    await Promise.all(animationPromises);
+  }
+  
+  // Extra delay for visual clarity
+  await delay(300);
+  
+  console.log('[resolveLMHBets] All L/M/H bets resolved');
 }
 
 /**
@@ -791,9 +937,9 @@ function clearBetResultAnimations() {
   // Remove all result badges
   document.querySelectorAll('.bet-result-badge').forEach(badge => badge.remove());
   
-  // Remove animation classes from chips
-  document.querySelectorAll('.chip.winning, .chip.losing').forEach(chip => {
-    chip.classList.remove('winning', 'losing');
+  // Remove animation classes from chips (including pending and push states)
+  document.querySelectorAll('.chip.winning, .chip.losing, .chip.pending, .chip.push').forEach(chip => {
+    chip.classList.remove('winning', 'losing', 'pending', 'push');
   });
   
   // Remove spot highlight classes
@@ -1618,6 +1764,12 @@ document.addEventListener('DOMContentLoaded', () => {
       await showCardBetResults(3, betResults);
       // Check for longshot on card 3
       await checkAndTriggerCardLongshot(3, longShotWinsCache);
+      
+      // ===== L/M/H RESOLUTION =====
+      // Now that all 3 cards are revealed, resolve all pending L/M/H bets
+      // This creates a dramatic "moment of truth" where all L/M/H chips resolve simultaneously
+      await delay(500); // Brief pause before the big reveal
+      await resolveLMHBets(betResults);
     }
     
     // Remove highlight from "Money"
