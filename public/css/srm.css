@@ -170,7 +170,7 @@ h1, h2, h3, .srm-title {
 }
 
 .betting-container > div {
-  background: radial-gradient(ellipse at center, var(--maroon) 0%, var(--maroon-dark) 100%);
+  background: radial-gradient(ellipse at center, var(--maroon) 50%, var(--maroon-dark) 100%);
   border: 0.1em solid rgba(212, 175, 55, 0.3);
   border-radius: 0.4em;
   position: relative;
@@ -202,7 +202,7 @@ h1, h2, h3, .srm-title {
 
 /* Interactions */
 .betting-container > div:hover {
-  background: radial-gradient(ellipse at center, #a00000 0%, #500000 100%);
+  background: radial-gradient(ellipse at center, #a00000 50%, #500000 100%);
   box-shadow: 0 0 1em var(--gold-accent);
   border-color: var(--gold-accent);
 }
@@ -228,7 +228,14 @@ h1, h2, h3, .srm-title {
 .border-bet-heart-club::before { content: '♥♣'; font-size: 1.8em; letter-spacing: -0.1em; }
 .border-bet-spade-club::before { content: '♠♣'; font-size: 1.8em; letter-spacing: -0.1em; }
 
-.joker-bet { background-image: url("/svg/joker-gold.svg"); background-size: 60%; background-position: center; background-repeat: no-repeat; }
+.joker-bet { 
+  background: url("/svg/joker-gold.svg") center / 60% no-repeat, 
+              radial-gradient(ellipse at center, var(--maroon) 50%, var(--maroon-dark) 100%); 
+}
+.joker-bet:hover { 
+  background: url("/svg/joker-gold.svg") center / 60% no-repeat, 
+              radial-gradient(ellipse at center, #a00000 50%, #500000 100%); 
+}
 .ace-bet::before { content: 'A'; font-size: 2.5em; font-family: 'Rye'; }
 .lowest-bet::before { content: 'L'; font-size: 2.5em; font-family: 'Rye'; }
 .middle-bet::before { content: 'M'; font-size: 2.5em; font-family: 'Rye'; }
