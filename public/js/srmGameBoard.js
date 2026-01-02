@@ -390,8 +390,22 @@ function revealCard(slotEl, card, altText) {
     faceImg.src = getCardImageSrc(card);
     faceImg.alt = altText;
     
-    // Trigger the flip
-    cardInner.classList.add('flipped');
+    // Wait for image to be decoded/rendered before flipping to avoid white flash
+    if (faceImg.decode) {
+      faceImg.decode().then(() => {
+        cardInner.classList.add('flipped');
+      }).catch(() => {
+        // Fallback: flip anyway if decode fails
+        cardInner.classList.add('flipped');
+      });
+    } else {
+      // Fallback for browsers without decode support
+      faceImg.onload = () => cardInner.classList.add('flipped');
+      // If already loaded (cached), flip immediately
+      if (faceImg.complete) {
+        cardInner.classList.add('flipped');
+      }
+    }
   }
 }
 
