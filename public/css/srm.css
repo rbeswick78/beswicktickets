@@ -217,16 +217,16 @@ h1, h2, h3, .srm-title {
     line-height: 1;
 }
 
-/* Font sizes adjusted to em */
-.suit-diamond::before { content: '♦'; color: var(--gold-accent); font-size: 3em; }
-.suit-heart::before { content: '♥'; color: var(--gold-accent); font-size: 3em; }
-.suit-spade::before { content: '♠'; color: var(--gold-accent); font-size: 3em; }
-.suit-club::before { content: '♣'; color: var(--gold-accent); font-size: 3em; }
+/* Font sizes adjusted to em - using bright gold #FFD700 to match joker */
+.suit-diamond::before { content: '♦'; color: #FFD700; font-size: 3em; text-shadow: 0 0 8px rgba(255, 215, 0, 0.6); }
+.suit-heart::before { content: '♥'; color: #FFD700; font-size: 3em; text-shadow: 0 0 8px rgba(255, 215, 0, 0.6); }
+.suit-spade::before { content: '♠'; color: #FFD700; font-size: 3em; text-shadow: 0 0 8px rgba(255, 215, 0, 0.6); }
+.suit-club::before { content: '♣'; color: #FFD700; font-size: 3em; text-shadow: 0 0 8px rgba(255, 215, 0, 0.6); }
 
-.border-bet-diamond-heart::before { content: '♦♥'; font-size: 1.8em; letter-spacing: -0.1em; }
-.border-bet-diamond-spade::before { content: '♦♠'; font-size: 1.8em; letter-spacing: -0.1em; }
-.border-bet-heart-club::before { content: '♥♣'; font-size: 1.8em; letter-spacing: -0.1em; }
-.border-bet-spade-club::before { content: '♠♣'; font-size: 1.8em; letter-spacing: -0.1em; }
+.border-bet-diamond-heart::before { content: '♦♥'; color: #FFD700; font-size: 1.8em; letter-spacing: -0.1em; text-shadow: 0 0 8px rgba(255, 215, 0, 0.6); }
+.border-bet-diamond-spade::before { content: '♦♠'; color: #FFD700; font-size: 1.8em; letter-spacing: -0.1em; text-shadow: 0 0 8px rgba(255, 215, 0, 0.6); }
+.border-bet-heart-club::before { content: '♥♣'; color: #FFD700; font-size: 1.8em; letter-spacing: -0.1em; text-shadow: 0 0 8px rgba(255, 215, 0, 0.6); }
+.border-bet-spade-club::before { content: '♠♣'; color: #FFD700; font-size: 1.8em; letter-spacing: -0.1em; text-shadow: 0 0 8px rgba(255, 215, 0, 0.6); }
 
 .betting-container > .joker-bet { 
   background: url("/svg/joker-gold.svg") center / 60% no-repeat, 
@@ -236,11 +236,11 @@ h1, h2, h3, .srm-title {
   background: url("/svg/joker-gold.svg") center / 60% no-repeat, 
               radial-gradient(ellipse at center, #a00000 50%, #500000 100%); 
 }
-.ace-bet::before { content: 'A'; font-size: 2.5em; font-family: 'Rye'; }
-.lowest-bet::before { content: 'L'; font-size: 2.5em; font-family: 'Rye'; }
-.middle-bet::before { content: 'M'; font-size: 2.5em; font-family: 'Rye'; }
-.highest-bet::before { content: 'H'; font-size: 2.5em; font-family: 'Rye'; }
-.odd-bet, .even-bet { font-size: 1.2em; text-transform: uppercase; letter-spacing: 0.1em; }
+.ace-bet::before { content: 'A'; color: #FFD700; font-size: 2.5em; font-family: 'Rye'; text-shadow: 0 0 8px rgba(255, 215, 0, 0.6); }
+.lowest-bet::before { content: 'L'; color: #FFD700; font-size: 2.5em; font-family: 'Rye'; text-shadow: 0 0 8px rgba(255, 215, 0, 0.6); }
+.middle-bet::before { content: 'M'; color: #FFD700; font-size: 2.5em; font-family: 'Rye'; text-shadow: 0 0 8px rgba(255, 215, 0, 0.6); }
+.highest-bet::before { content: 'H'; color: #FFD700; font-size: 2.5em; font-family: 'Rye'; text-shadow: 0 0 8px rgba(255, 215, 0, 0.6); }
+.odd-bet, .even-bet { color: #FFD700; font-size: 1.2em; text-transform: uppercase; letter-spacing: 0.1em; text-shadow: 0 0 8px rgba(255, 215, 0, 0.6); }
 
 .lowest-bet, .middle-bet, .highest-bet { color: transparent; } 
 
