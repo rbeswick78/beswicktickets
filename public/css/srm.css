@@ -1628,7 +1628,9 @@ h1, h2, h3, .srm-title {
    ========================================= */
 
 /* Winning chip animation - continuous rotating shimmer */
-.chip.winning {
+/* Use higher specificity to override .chip.chip-settled animation: none */
+.chip.winning,
+.chip.chip-settled.winning {
   z-index: 20;
   transform: scale(1.08);
   overflow: visible;
@@ -1666,21 +1668,21 @@ h1, h2, h3, .srm-title {
   right: -4px;
   bottom: -4px;
   border-radius: 50%;
-  border: 3px solid transparent;
-  background: 
-    linear-gradient(var(--maroon-dark), var(--maroon-dark)) padding-box,
-    conic-gradient(
-      from var(--shimmer-angle, 0deg),
-      transparent 0deg,
-      transparent 30deg,
-      rgba(255, 215, 0, 0.3) 60deg,
-      rgba(255, 255, 255, 0.95) 90deg,
-      rgba(255, 248, 180, 1) 120deg,
-      rgba(255, 255, 255, 0.95) 150deg,
-      rgba(255, 215, 0, 0.3) 180deg,
-      transparent 210deg,
-      transparent 360deg
-    ) border-box;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 30deg,
+    rgba(255, 215, 0, 0.4) 60deg,
+    rgba(255, 255, 255, 0.95) 90deg,
+    rgba(255, 248, 180, 1) 120deg,
+    rgba(255, 255, 255, 0.95) 150deg,
+    rgba(255, 215, 0, 0.4) 180deg,
+    transparent 210deg,
+    transparent 360deg
+  );
+  /* Mask to show only the outer ring */
+  -webkit-mask: radial-gradient(circle, transparent 60%, black 65%);
+  mask: radial-gradient(circle, transparent 60%, black 65%);
   animation: shimmerRotate 1.8s linear infinite;
   pointer-events: none;
 }
@@ -1721,7 +1723,9 @@ h1, h2, h3, .srm-title {
 }
 
 /* Losing chip animation - cracked/broken appearance (stays visible) */
-.chip.losing {
+/* Use higher specificity to override .chip.chip-settled animation: none */
+.chip.losing,
+.chip.chip-settled.losing {
   animation: chipLoseShake 0.4s ease-out;
   filter: grayscale(0.6) brightness(0.75);
   pointer-events: none;
