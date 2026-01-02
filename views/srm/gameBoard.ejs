@@ -180,16 +180,18 @@
         <div id="balance-list" class="balance-list"></div>
     </div>
     
-    <!-- Action Bar (Fixed Bottom) -->
-    <div id="action-bar" class="action-bar">
-        <!-- Betting Station: Balance + Chips grouped together -->
-        <div class="betting-station">
+    <!-- Bottom UI Islands -->
+    <div class="bottom-islands">
+        <!-- Bank Island (Left) -->
+        <div class="ui-island bank-island">
             <div class="balance-led">
-                <span class="led-label">BANK</span>
+                <span class="led-label">Bank</span>
                 <span id="my-balance-amount" class="led-display">0</span>
             </div>
-            
-            <!-- Chip Selector -->
+        </div>
+        
+        <!-- Chip Island (Center) -->
+        <div class="ui-island chip-island">
             <div class="chip-selector">
                 <div class="chip-option selected" data-value="1">1</div>
                 <div class="chip-option" data-value="5">5</div>
@@ -199,8 +201,9 @@
             </div>
         </div>
         
+        <!-- Deal Island (Right) - Dealer only -->
         <% if (game.dealer._id.toString() === currentUserId) { %>
-            <div class="dealer-controls">
+            <div class="ui-island deal-island">
                 <button id="deal-button" class="dealer-button">Deal</button>
             </div>
         <% } %>

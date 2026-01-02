@@ -348,42 +348,51 @@ h1, h2, h3, .srm-title {
   border-bottom: 1px solid #333;
 }
 
-.action-bar {
+/* =========================================
+   Bottom UI Islands
+   ========================================= */
+
+.bottom-islands {
   position: fixed;
   bottom: 12px;
   left: 12px;
   right: 12px;
-  width: auto;
-  height: var(--action-bar-height);
-  background: rgba(0, 0, 0, 0.9);
-  border: 2px solid var(--gold-accent);
-  border-radius: 14px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5),
-              0 0 30px rgba(212, 175, 55, 0.15);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  padding: 0 1rem;
+  align-items: flex-end;
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  box-sizing: border-box;
   z-index: 1000;
-  font-size: 1rem;
+  pointer-events: none; /* Allow clicking through the container */
 }
 
-/* =========================================
-   Betting Station (Balance + Chips)
-   ========================================= */
+.ui-island {
+  background: rgba(0, 0, 0, 0.9);
+  border: 2px solid var(--gold-accent);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5),
+              0 0 20px rgba(212, 175, 55, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: auto; /* Re-enable clicking on islands */
+}
 
-.betting-station {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
+/* Bank Island - Left */
+.bank-island {
+  padding: 8px 16px;
+}
+
+/* Chip Island - Center */
+.chip-island {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
+  padding: 10px 16px;
+}
+
+/* Deal Island - Right */
+.deal-island {
+  padding: 0;
+  overflow: hidden;
 }
 
 .balance-led {
@@ -392,13 +401,10 @@ h1, h2, h3, .srm-title {
   align-items: center;
   justify-content: center;
   background: linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 50%, #1a1a1a 100%);
-  border: 2px solid var(--gold-accent);
   border-radius: 6px;
-  padding: 4px 12px;
+  padding: 6px 14px;
   min-width: 70px;
-  margin-right: 1.5rem;
   box-shadow: 
-    0 0 10px rgba(212, 175, 55, 0.3),
     inset 0 1px 3px rgba(0, 0, 0, 0.8),
     inset 0 -1px 2px rgba(255, 255, 255, 0.05);
   position: relative;
@@ -493,25 +499,27 @@ h1, h2, h3, .srm-title {
   100% { transform: scale(1); }
 }
 
-.dealer-controls {
-    margin-left: auto; 
-}
-
 .dealer-button {
-  padding: 0.5rem 1.5rem;
-  background: var(--maroon);
+  padding: 12px 20px;
+  background: linear-gradient(135deg, var(--maroon) 0%, var(--maroon-dark) 100%);
   color: var(--gold-accent);
-  border: 1px solid var(--gold-accent);
+  border: none;
   font-family: 'Rye';
   font-size: 1.1rem;
   cursor: pointer;
   transition: all 0.2s;
-  border-radius: 4px;
+  border-radius: 10px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  display: block;
 }
 
 .dealer-button:hover {
-  background: var(--maroon-dark);
-  box-shadow: 0 0 10px var(--gold-accent);
+  background: linear-gradient(135deg, #9a0000 0%, var(--maroon-dark) 100%);
+  box-shadow: inset 0 0 20px rgba(212, 175, 55, 0.2);
+}
+
+.dealer-button:active {
+  background: linear-gradient(135deg, var(--maroon-dark) 0%, #2a0000 100%);
 }
 
 /* =========================================
@@ -604,33 +612,39 @@ h1, h2, h3, .srm-title {
 .betting-container.chip-cursor-20 > div { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%2316a34a' stroke='%23166534' stroke-width='2' stroke-dasharray='4 2'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-size='11' font-weight='bold' fill='white'%3E20%3C/text%3E%3C/svg%3E") 16 16, pointer; }
 .betting-container.chip-cursor-50 > div { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%231a1a1a' stroke='%23d4af37' stroke-width='2' stroke-dasharray='4 2'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-size='11' font-weight='bold' fill='%23d4af37'%3E50%3C/text%3E%3C/svg%3E") 16 16, pointer; }
 
-/* Mobile adjustments for chip selector and LED balance */
+/* Mobile adjustments for UI islands and sidebar */
 @media (max-width: 600px) {
   :root {
     --action-bar-height: var(--action-bar-height-mobile);
   }
   
-  .betting-station {
-    gap: 0.5rem;
-  }
-  
-  .chip-selector {
-    gap: 0.3rem;
-  }
-  
-  .chip-option {
-    width: 34px;
-    height: 34px;
-    font-size: 0.75rem;
-    border-width: 2px;
-  }
-  
-  .action-bar {
+  .bottom-islands {
     bottom: 8px;
     left: 8px;
     right: 8px;
-    padding: 0 0.5rem;
-    border-radius: 12px;
+  }
+  
+  .ui-island {
+    border-radius: 10px;
+  }
+  
+  .bank-island {
+    padding: 6px 10px;
+  }
+  
+  .chip-island {
+    padding: 8px 10px;
+  }
+  
+  .chip-selector {
+    gap: 0.25rem;
+  }
+  
+  .chip-option {
+    width: 32px;
+    height: 32px;
+    font-size: 0.7rem;
+    border-width: 2px;
   }
   
   .player-sidebar {
@@ -645,9 +659,8 @@ h1, h2, h3, .srm-title {
   }
   
   .balance-led {
-    min-width: 55px;
-    padding: 3px 8px;
-    margin-right: 1rem;
+    min-width: 50px;
+    padding: 4px 8px;
   }
   
   .led-label {
@@ -656,7 +669,12 @@ h1, h2, h3, .srm-title {
   }
   
   .led-display {
-    font-size: 1rem;
+    font-size: 0.95rem;
+  }
+  
+  .dealer-button {
+    padding: 10px 14px;
+    font-size: 0.95rem;
   }
 }
 
