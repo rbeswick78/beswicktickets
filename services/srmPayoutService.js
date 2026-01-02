@@ -204,10 +204,10 @@ async function computePayouts(gameId, chosenCards, io) {
 
       // NEW: Low / Mid / High Bets
       else if (spotId.endsWith('-low') || spotId.endsWith('-mid') || spotId.endsWith('-high')) {
-        // If there's any joker among chosenCards => push (return bet)
+        // If there's any joker among chosenCards => all L/M/H bets lose
         const anyJoker = chosenCards.some(c => c.isJoker);
         if (anyJoker) {
-          totalPayout = amount; // Push - return the bet
+          totalPayout = 0; // Joker present => L/M/H bets lose
         } else {
           // Determine the position of this card
           const position = getCardPosition(cardIndex, chosenCards);
