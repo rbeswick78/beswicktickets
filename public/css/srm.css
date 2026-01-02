@@ -170,7 +170,7 @@ h1, h2, h3, .srm-title {
 }
 
 .betting-container > div {
-  background-color: rgba(128, 0, 0, 0.6);
+  background-color: var(--maroon);
   border: 0.1em solid rgba(212, 175, 55, 0.3);
   border-radius: 0.4em;
   position: relative;
@@ -202,7 +202,7 @@ h1, h2, h3, .srm-title {
 
 /* Interactions */
 .betting-container > div:hover {
-  background-color: rgba(128, 0, 0, 0.9);
+  background-color: #a00000;
   box-shadow: 0 0 1em var(--gold-accent);
   border-color: var(--gold-accent);
 }
