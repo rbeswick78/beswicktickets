@@ -228,11 +228,11 @@ h1, h2, h3, .srm-title {
 .border-bet-heart-club::before { content: '♥♣'; font-size: 1.8em; letter-spacing: -0.1em; }
 .border-bet-spade-club::before { content: '♠♣'; font-size: 1.8em; letter-spacing: -0.1em; }
 
-.joker-bet { 
+.betting-container > .joker-bet { 
   background: url("/svg/joker-gold.svg") center / 60% no-repeat, 
               radial-gradient(ellipse at center, var(--maroon) 50%, var(--maroon-dark) 100%); 
 }
-.joker-bet:hover { 
+.betting-container > .joker-bet:hover { 
   background: url("/svg/joker-gold.svg") center / 60% no-repeat, 
               radial-gradient(ellipse at center, #a00000 50%, #500000 100%); 
 }
