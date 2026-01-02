@@ -1165,6 +1165,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Reset "Money" highlight now that all cards are revealed
         if (titleMoney) titleMoney.classList.remove('highlight');
         
+        // Switch dealer button from "Dealing" to "Clear"
+        if (dealButton) {
+          dealButton.textContent = 'Clear';
+          dealButton.classList.remove('dealing');
+        }
+        
         // Apply cached ticket updates now that cards are revealed
         ticketUpdateCache.forEach(data => {
           updatePlayerBalance(data.userId, data.username, data.ticketBalance);
@@ -1269,10 +1275,15 @@ document.addEventListener('DOMContentLoaded', () => {
         finishedDealing = false;
         payoutResultsCache = null;
 
+        // Switch to "Dealing" state
+        dealButton.textContent = 'Dealing';
+        dealButton.classList.add('dealing');
+
         socket.emit('dealCards', { gameId, userId: currentUserId });
-      } else {
+      } else if (dealButton.textContent === 'Clear') {
         socket.emit('clearRound', { gameId, userId: currentUserId });
       }
+      // If "Dealing", ignore clicks (button is disabled via CSS)
     });
   }
 
@@ -1289,8 +1300,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.chip').forEach(chip => chip.remove());
     payoutResultsContainer.style.display = 'none';
 
-    if (isDealer) {
+    if (isDealer && dealButton) {
       dealButton.textContent = 'Deal';
+      dealButton.classList.remove('dealing');
     }
     currentRoundStatus = 'betting';
 
