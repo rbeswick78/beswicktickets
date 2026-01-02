@@ -1498,7 +1498,11 @@ document.addEventListener('DOMContentLoaded', () => {
         updatePlayerBalance(player.userId, player.username, player.ticketBalance);
       }
     });
-    rebuildUIFromState(data, currentUserId, isDealer);
+    
+    // Don't rebuild UI during dealing phase - it would wipe out winning/losing chip effects
+    if (!isDealingPhase) {
+      rebuildUIFromState(data, currentUserId, isDealer);
+    }
   });
 
   // Listen for colorAssignment
