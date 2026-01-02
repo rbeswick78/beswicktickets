@@ -575,10 +575,13 @@ function showPayoutResults(betResults) {
     showToast(`You won ${myNet} tickets! 🎉`, 'success');
   }
 
-  // If dealer, make sure button says "Clear"
+  // If dealer, make sure button says "Clear" and remove dealing state
   if (isDealer) {
     const dealButton = document.getElementById('deal-button');
-    if (dealButton) dealButton.textContent = 'Clear';
+    if (dealButton) {
+      dealButton.textContent = 'Clear';
+      dealButton.classList.remove('dealing');
+    }
   }
 }
 
@@ -865,9 +868,12 @@ function rebuildUIFromState(gameState, currentUserId, isDealer) {
   }
 
   // 4) If roundStatus is 'results' or 'resultsPending' and this user is dealer, show 'Clear'.
+  //    But don't override if currently in "dealing" animation state
   if ((roundStatus === 'results' || roundStatus === 'resultsPending') && isDealer) {
     const dealButton = document.getElementById('deal-button');
-    if (dealButton) dealButton.textContent = 'Clear';
+    if (dealButton && !dealButton.classList.contains('dealing')) {
+      dealButton.textContent = 'Clear';
+    }
   }
 }
 
