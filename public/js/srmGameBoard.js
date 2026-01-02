@@ -578,6 +578,23 @@ async function showCardBetResults(cardNumber, allBetResults) {
       return; // Not for this card
     }
     
+    // Check if this is an L/M/H bet - ALWAYS defer to resolveLMHBets()
+    // L/M/H outcomes depend on ALL 3 cards, so we show pending state until card 3 is revealed
+    if (isLMHBet(chipSpotId)) {
+      // Only add pending if not already pending (for cards 1 & 2, pending was already added)
+      if (!chip.classList.contains('pending')) {
+        chip.classList.add('pending');
+        console.log(`[showCardBetResults] L/M/H bet set to pending for card ${cardNumber}: ${chipSpotId}`);
+      }
+      
+      // Short animation promise for pending state
+      const animPromise = new Promise(resolve => {
+        setTimeout(resolve, 400);
+      });
+      animationPromises.push(animPromise);
+      return; // Skip normal win/lose processing - resolveLMHBets() will handle it
+    }
+    
     const lookupKey = `${chipUserId}:${chipSpotId}`;
     console.log(`[showCardBetResults] Looking up chip with key: ${lookupKey}`);
     const result = betLookup[lookupKey];
@@ -590,20 +607,6 @@ async function showCardBetResults(cardNumber, allBetResults) {
     console.log(`[showCardBetResults] Found result for chip:`, result);
     
     const spotEl = chip.parentElement;
-    
-    // Check if this is an L/M/H bet - defer resolution until all cards are revealed
-    if (isLMHBet(chipSpotId) && cardNumber < 3) {
-      // Apply pending state for L/M/H bets on cards 1 and 2
-      chip.classList.add('pending');
-      console.log(`[showCardBetResults] L/M/H bet deferred for card ${cardNumber}: ${chipSpotId}`);
-      
-      // Short animation promise for pending state
-      const animPromise = new Promise(resolve => {
-        setTimeout(resolve, 400);
-      });
-      animationPromises.push(animPromise);
-      return; // Skip normal win/lose processing for this chip
-    }
     
     // Apply win/lose effects to chips (no badges displayed)
     if (result.net > 0) {
