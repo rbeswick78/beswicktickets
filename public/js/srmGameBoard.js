@@ -596,11 +596,15 @@ async function showCardBetResults(cardNumber, allBetResults) {
     if (result.net > 0) {
       // WIN - apply winning shimmer effect
       console.log(`[showCardBetResults] Adding 'winning' class to chip for ${lookupKey}`);
+      // Force reflow to ensure animation starts fresh
+      void chip.offsetWidth;
       chip.classList.add('winning');
       if (spotEl) spotEl.classList.add('spot-win');
     } else if (result.net < 0) {
       // LOSS - apply cracked/broken effect (chip stays visible)
       console.log(`[showCardBetResults] Adding 'losing' class to chip for ${lookupKey}`);
+      // Force reflow to ensure animation starts fresh
+      void chip.offsetWidth;
       chip.classList.add('losing');
       if (spotEl) spotEl.classList.add('spot-loss');
     } else {

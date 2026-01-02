@@ -329,7 +329,8 @@ h1, h2, h3, .srm-title {
 }
 
 /* Once chip drop is complete, disable further re-animation of the drop */
-.chip.chip-settled {
+/* Only apply when NOT winning or losing */
+.chip.chip-settled:not(.winning):not(.losing) {
   animation: none;
 }
 
@@ -1628,18 +1629,19 @@ h1, h2, h3, .srm-title {
    ========================================= */
 
 /* Winning chip animation - continuous rotating shimmer */
-/* Use higher specificity to override .chip.chip-settled animation: none */
+/* Use higher specificity and !important to override .chip.chip-settled animation: none */
 .chip.winning,
 .chip.chip-settled.winning {
-  z-index: 20;
-  transform: scale(1.08);
-  overflow: visible;
+  z-index: 20 !important;
+  transform: scale(1.08) translateZ(0) !important;
+  overflow: visible !important;
   box-shadow: 
     inset 0 0 0 0.2em rgba(0,0,0,0.3),
     0.15em 0.15em 0.3em rgba(0,0,0,0.4),
     0 0 12px rgba(255, 215, 0, 0.6),
-    0 0 20px rgba(255, 215, 0, 0.4);
-  animation: winPulse 1.5s ease-in-out infinite;
+    0 0 20px rgba(255, 215, 0, 0.4) !important;
+  animation: winPulse 1.5s ease-in-out infinite !important;
+  will-change: transform, box-shadow;
 }
 
 @keyframes winPulse {
@@ -1723,13 +1725,15 @@ h1, h2, h3, .srm-title {
 }
 
 /* Losing chip animation - cracked/broken appearance (stays visible) */
-/* Use higher specificity to override .chip.chip-settled animation: none */
+/* Use higher specificity and !important to override .chip.chip-settled animation: none */
 .chip.losing,
 .chip.chip-settled.losing {
-  animation: chipLoseShake 0.4s ease-out;
-  filter: grayscale(0.6) brightness(0.75);
-  pointer-events: none;
-  opacity: 0.85;
+  animation: chipLoseShake 0.4s ease-out !important;
+  filter: grayscale(0.6) brightness(0.75) !important;
+  pointer-events: none !important;
+  opacity: 0.85 !important;
+  transform: translateZ(0);
+  will-change: transform, filter, opacity;
 }
 
 @keyframes chipLoseShake {
