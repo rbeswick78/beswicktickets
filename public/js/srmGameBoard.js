@@ -595,17 +595,23 @@ async function showCardBetResults(cardNumber, allBetResults) {
     // Apply win/lose effects to chips (no badges displayed)
     if (result.net > 0) {
       // WIN - apply winning shimmer effect
-      console.log(`[showCardBetResults] Adding 'winning' class to chip for ${lookupKey}`);
+      console.log(`[showCardBetResults] Adding 'winning' class to chip for ${lookupKey}, card ${cardNumber}`);
       // Force reflow to ensure animation starts fresh
       void chip.offsetWidth;
       chip.classList.add('winning');
+      // Debug: log computed style to verify CSS is applying
+      const computedStyle = window.getComputedStyle(chip);
+      console.log(`[showCardBetResults] Winning chip computed animation: ${computedStyle.animation}, transform: ${computedStyle.transform}`);
       if (spotEl) spotEl.classList.add('spot-win');
     } else if (result.net < 0) {
       // LOSS - apply cracked/broken effect (chip stays visible)
-      console.log(`[showCardBetResults] Adding 'losing' class to chip for ${lookupKey}`);
+      console.log(`[showCardBetResults] Adding 'losing' class to chip for ${lookupKey}, card ${cardNumber}`);
       // Force reflow to ensure animation starts fresh
       void chip.offsetWidth;
       chip.classList.add('losing');
+      // Debug: log computed style to verify CSS is applying
+      const computedStyle = window.getComputedStyle(chip);
+      console.log(`[showCardBetResults] Losing chip computed filter: ${computedStyle.filter}, opacity: ${computedStyle.opacity}`);
       if (spotEl) spotEl.classList.add('spot-loss');
     } else {
       // PUSH (net = 0) - no visual effect applied
