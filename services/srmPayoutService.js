@@ -153,56 +153,8 @@ async function computePayouts(gameId, chosenCards, io) {
       if (!chosenCard) {
         // No card => no payout
         totalPayout = 0;
-      } else if (chosenCard.isJoker) {
-        // If it's a Joker
-        if (spotId.endsWith('-joker')) {
-          // Pay out 26× stake (2 jokers out of 52 odds).
-          totalPayout = 26 * amount;
-          isLongShotWin = { type: 'joker', multiplier: 26 };
-        } else {
-          // They didn't bet on the Joker => lose
-          totalPayout = 0;
-        }
-      } 
-      else if (spotId.includes('suits-')) {
-        // two-suit logic
-        const suitsStr = spotId.split('suits-')[1]; 
-        const suitsArray = suitsStr.split('');
-        if (suitsArray.includes(chosenCard.suit)) {
-          // You pay 2× stake if you want net = +1 on a 1 stake 
-          // i.e. totalPayout = 2
-          totalPayout = 2 * amount;
-        }
-      } 
-      else if (spotId.includes('suit-')) {
-        // single-suit logic
-        const suitSymbol = spotId.slice(-1);
-        if (chosenCard.suit === suitSymbol) {
-          // single suit is 4× total if we want a 3 profit on a stake of 1
-          totalPayout = 4 * amount;
-        }
       }
-      else if (spotId.endsWith('-odd') || spotId.endsWith('-even')) {
-        // Odd/Even
-        const numericRank = parseRank(chosenCard.rank);
-        if (numericRank !== null) {
-          const isOdd = (numericRank % 2 !== 0);
-          const playerChoseOdd = spotId.endsWith('-odd');
-          if ((isOdd && playerChoseOdd) || (!isOdd && !playerChoseOdd)) {
-            // Suppose you want 2× total, so user's net is +1 if stake=1
-            totalPayout = 2 * amount;
-          }
-        }
-      }
-      else if (spotId.endsWith('-ace')) {
-        const numericRank = parseRank(chosenCard.rank);
-        if (numericRank === 1) {
-          totalPayout = 13 * amount;
-          isLongShotWin = { type: 'ace', multiplier: 13 };
-        }
-      }
-
-      // NEW: Low / Mid / High Bets
+      // L/M/H bets - handle BEFORE Joker check since L/M/H considers all 3 cards
       else if (spotId.endsWith('-low') || spotId.endsWith('-mid') || spotId.endsWith('-high')) {
         // If there's any joker among chosenCards => all L/M/H bets lose
         const anyJoker = chosenCards.some(c => c.isJoker);
@@ -252,6 +204,54 @@ async function computePayouts(gameId, chosenCards, io) {
               totalPayout = 0;
             }
           }
+        }
+      }
+      else if (chosenCard.isJoker) {
+        // If it's a Joker
+        if (spotId.endsWith('-joker')) {
+          // Pay out 26× stake (2 jokers out of 52 odds).
+          totalPayout = 26 * amount;
+          isLongShotWin = { type: 'joker', multiplier: 26 };
+        } else {
+          // They didn't bet on the Joker => lose
+          totalPayout = 0;
+        }
+      } 
+      else if (spotId.includes('suits-')) {
+        // two-suit logic
+        const suitsStr = spotId.split('suits-')[1]; 
+        const suitsArray = suitsStr.split('');
+        if (suitsArray.includes(chosenCard.suit)) {
+          // You pay 2× stake if you want net = +1 on a 1 stake 
+          // i.e. totalPayout = 2
+          totalPayout = 2 * amount;
+        }
+      } 
+      else if (spotId.includes('suit-')) {
+        // single-suit logic
+        const suitSymbol = spotId.slice(-1);
+        if (chosenCard.suit === suitSymbol) {
+          // single suit is 4× total if we want a 3 profit on a stake of 1
+          totalPayout = 4 * amount;
+        }
+      }
+      else if (spotId.endsWith('-odd') || spotId.endsWith('-even')) {
+        // Odd/Even
+        const numericRank = parseRank(chosenCard.rank);
+        if (numericRank !== null) {
+          const isOdd = (numericRank % 2 !== 0);
+          const playerChoseOdd = spotId.endsWith('-odd');
+          if ((isOdd && playerChoseOdd) || (!isOdd && !playerChoseOdd)) {
+            // Suppose you want 2× total, so user's net is +1 if stake=1
+            totalPayout = 2 * amount;
+          }
+        }
+      }
+      else if (spotId.endsWith('-ace')) {
+        const numericRank = parseRank(chosenCard.rank);
+        if (numericRank === 1) {
+          totalPayout = 13 * amount;
+          isLongShotWin = { type: 'ace', multiplier: 13 };
         }
       }
 
