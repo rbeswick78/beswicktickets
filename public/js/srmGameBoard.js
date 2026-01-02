@@ -1081,33 +1081,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
     console.log('[cardsDealt] images preloaded, starting flip sequence');
 
-    // Immediately show card 1 and play "steal.mp3"
+    // Title word elements for highlight animation
+    const titleSteal = document.getElementById('title-steal');
+    const titleRyans = document.getElementById('title-ryans');
+    const titleMoney = document.getElementById('title-money');
+
+    // Immediately show card 1 and play "steal.mp3" - highlight "Steal"
     revealCard(cardSlot1, dealData.card1, 'Card 1');
     stealAudio.play().catch(err => {
       console.warn('Audio play failed for steal.mp3:', err);
     });
+    if (titleSteal) titleSteal.classList.add('highlight');
 
-    // 2s later => show card 2 and play "ryans.mp3"
+    // 2s later => show card 2 and play "ryans.mp3" - highlight "Ryan's"
     setTimeout(() => {
       console.log('[cardsDealt] 2s later, flipping card 2');
       revealCard(cardSlot2, dealData.card2, 'Card 2');
       ryansAudio.play().catch(err => {
         console.warn('Audio play failed for ryans.mp3:', err);
       });
+      if (titleSteal) titleSteal.classList.remove('highlight');
+      if (titleRyans) titleRyans.classList.add('highlight');
     }, 2000);
 
-    // 4s later => show card 3 and play "money.mp3"
+    // 4s later => show card 3 and play "money.mp3" - highlight "Money"
     setTimeout(() => {
       console.log('[cardsDealt] 4s later, flipping card 3');
       revealCard(cardSlot3, dealData.card3, 'Card 3');
       moneyAudio.play().catch(err => {
         console.warn('Audio play failed for money.mp3:', err);
       });
+      if (titleRyans) titleRyans.classList.remove('highlight');
+      if (titleMoney) titleMoney.classList.add('highlight');
       finishedDealing = true;
 
       // Wait 2 more seconds => if we already have payoutResults, show them (and play round results audio)
       setTimeout(async () => {
         console.log('[cardsDealt] 6s total, check if payoutResultsCache => show overlay');
+        
+        // Reset "Money" highlight now that all cards are revealed
+        if (titleMoney) titleMoney.classList.remove('highlight');
         
         // Apply cached ticket updates now that cards are revealed
         ticketUpdateCache.forEach(data => {

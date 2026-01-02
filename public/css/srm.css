@@ -64,6 +64,56 @@ h1, h2, h3, .srm-title {
     text-align: center;
 }
 
+/* Title Word Highlight Animation */
+.title-word {
+    display: inline-block;
+    transition: color 0.3s ease, text-shadow 0.3s ease, transform 0.3s ease;
+}
+
+.title-word.highlight {
+    color: #FFD700;
+    text-shadow: 
+        0 0 10px #FFD700,
+        0 0 20px #FFD700,
+        0 0 40px rgba(255, 215, 0, 0.8),
+        0 0 60px rgba(255, 215, 0, 0.6),
+        0.1em 0.1em 0.2em var(--shadow-color);
+    transform: scale(1.05);
+    animation: titleWordPulse 0.5s ease-in-out infinite alternate, 
+               titleWordShimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes titleWordPulse {
+    0% {
+        text-shadow: 
+            0 0 10px #FFD700,
+            0 0 20px #FFD700,
+            0 0 40px rgba(255, 215, 0, 0.8),
+            0 0 60px rgba(255, 215, 0, 0.6),
+            0.1em 0.1em 0.2em var(--shadow-color);
+    }
+    100% {
+        text-shadow: 
+            0 0 15px #FFF8DC,
+            0 0 30px #FFD700,
+            0 0 50px rgba(255, 215, 0, 0.9),
+            0 0 80px rgba(255, 215, 0, 0.7),
+            0.1em 0.1em 0.2em var(--shadow-color);
+    }
+}
+
+@keyframes titleWordShimmer {
+    0% {
+        filter: brightness(1) hue-rotate(0deg);
+    }
+    50% {
+        filter: brightness(1.2) hue-rotate(10deg);
+    }
+    100% {
+        filter: brightness(1) hue-rotate(0deg);
+    }
+}
+
 /* =========================================
    Layout & Grid
    ========================================= */
