@@ -343,6 +343,41 @@ function preloadCardImage(card) {
 }
 
 /**
+ * Preload ALL card SVGs on page load for instant responsiveness
+ */
+function preloadAllCardImages() {
+  const ranks = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
+  const suits = ['C', 'D', 'H', 'S'];
+  const cardPaths = [];
+  
+  // Add all regular cards
+  for (const rank of ranks) {
+    for (const suit of suits) {
+      cardPaths.push(`/svg/cards/${rank}${suit}.svg`);
+    }
+  }
+  
+  // Add jokers
+  cardPaths.push('/svg/cards/1J.svg');
+  cardPaths.push('/svg/cards/2J.svg');
+  
+  // Add card backs
+  cardPaths.push('/svg/cards/1B.svg');
+  cardPaths.push('/svg/cards/2B.svg');
+  
+  // Preload all images (non-blocking)
+  cardPaths.forEach(path => {
+    const img = new Image();
+    img.src = path;
+  });
+  
+  console.log(`[preloadAllCardImages] Preloading ${cardPaths.length} card images`);
+}
+
+// Preload all cards immediately when script loads
+preloadAllCardImages();
+
+/**
  * Reveal a single card's image in the specified DOM slot using 3D flip
  */
 function revealCard(slotEl, card, altText) {
@@ -1059,8 +1094,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // cardsDealt => do a time-staggered reveal
-  socket.on('cardsDealt', async (dealData) => {
-    console.log('[cardsDealt] arrived, preloading images');
+  socket.on('cardsDealt', (dealData) => {
+    console.log('[cardsDealt] arrived, starting reveal sequence');
 
     // Enter dealing phase - cache any ticketUpdate events until cards finish flipping
     isDealingPhase = true;
@@ -1072,14 +1107,8 @@ document.addEventListener('DOMContentLoaded', () => {
       card3: dealData.card3
     };
 
-    // Preload all card images before starting the flip sequence
-    await Promise.all([
-      preloadCardImage(dealData.card1),
-      preloadCardImage(dealData.card2),
-      preloadCardImage(dealData.card3)
-    ]);
-
-    console.log('[cardsDealt] images preloaded, starting flip sequence');
+    // Cards are already preloaded on page load, start flip sequence immediately
+    console.log('[cardsDealt] starting flip sequence (cards pre-cached)');
 
     // Title word elements for highlight animation
     const titleSteal = document.getElementById('title-steal');
