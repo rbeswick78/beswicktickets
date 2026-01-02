@@ -26,6 +26,9 @@ let longShotAudio;
 let longShotWinsCache = null;
 let longShotCelebrationActive = false;
 
+// Progressive results state
+let betResultsCache = null;  // Store all bet results for per-card reveal
+
 // Chip selector state
 let selectedBetAmount = 1; 
 
@@ -425,8 +428,408 @@ function resetCard(slotEl) {
 }
 
 /**
+ * Helper: Promise-based delay
+ */
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Helper: Get the DOM element for a bet spot
+ */
+function getBetSpotElement(spotId) {
+  if (spotId.includes('suits-')) {
+    return document.querySelector(`.border-bet[data-spot-id="${spotId}"]`);
+  } else if (spotId.includes('-odd') || spotId.includes('-even')) {
+    return document.querySelector(`.odd-even-bet[data-spot-id="${spotId}"]`);
+  } else if (spotId.includes('-joker')) {
+    return document.querySelector(`.joker-bet[data-spot-id="${spotId}"]`);
+  } else if (spotId.includes('-ace')) {
+    return document.querySelector(`.ace-bet[data-spot-id="${spotId}"]`);
+  } else if (spotId.includes('-low')) {
+    return document.querySelector(`.lowest-bet[data-spot-id="${spotId}"]`);
+  } else if (spotId.includes('-mid')) {
+    return document.querySelector(`.middle-bet[data-spot-id="${spotId}"]`);
+  } else if (spotId.includes('-high')) {
+    return document.querySelector(`.highest-bet[data-spot-id="${spotId}"]`);
+  } else {
+    return document.querySelector(`.suit-quad[data-spot-id="${spotId}"]`);
+  }
+}
+
+/**
+ * Build a unique bet key from userId and spotId for grouping
+ */
+function getBetKey(userId, spotId) {
+  return `${userId}-${spotId}`;
+}
+
+/**
+ * Show bet results for a specific card with chip animations
+ * @param {number} cardNumber - 1, 2, or 3
+ * @param {Array} allBetResults - All bet results from the server
+ * @returns {Promise} - Resolves when animations complete
+ */
+async function showCardBetResults(cardNumber, allBetResults) {
+  // Filter bet results for this card
+  const cardBets = allBetResults.filter(bet => bet.cardNumber === cardNumber);
+  
+  if (cardBets.length === 0) {
+    return; // No bets for this card
+  }
+
+  // Group bets by spotId to aggregate multiple bets on the same spot by the same user
+  const spotResults = {};
+  cardBets.forEach(bet => {
+    const key = getBetKey(bet.userId, `card${cardNumber}-${bet.betDescr.replace(/\s+/g, '-').toLowerCase()}`);
+    // The spotId from betResults might differ from the actual DOM spotId
+    // We need to reconstruct it from the bet data
+    // Actually, we can use the chips that are already on the board
+  });
+
+  // Get all chips on this card's betting container
+  const bettingContainer = document.getElementById(`betting-container-${cardNumber}`);
+  if (!bettingContainer) return;
+
+  const allChips = bettingContainer.querySelectorAll('.chip');
+  
+  // Create a map of spotId -> net result for quick lookup
+  const spotNetMap = {};
+  cardBets.forEach(bet => {
+    // Reconstruct the spotId pattern from the bet
+    // The server sends betDescr like "Suit ♦" or "Suits ♦♥" or "Odd" etc.
+    // We need to match this to the actual spotId on the DOM
+    
+    // Find the chip by matching user and checking which spot it's in
+    allChips.forEach(chip => {
+      if (chip.dataset.userId === bet.userId) {
+        const chipSpotId = chip.dataset.spotId;
+        // Check if this chip's spotId matches the bet's card number
+        if (chipSpotId && chipSpotId.startsWith(`card${cardNumber}-`)) {
+          if (!spotNetMap[chipSpotId]) {
+            spotNetMap[chipSpotId] = {};
+          }
+          if (!spotNetMap[chipSpotId][bet.userId]) {
+            spotNetMap[chipSpotId][bet.userId] = 0;
+          }
+          // We need to match the bet to the chip more precisely
+          // For now, let's use a different approach - iterate through cardBets and find matching chips
+        }
+      }
+    });
+  });
+
+  // Better approach: iterate through all chips for this card and determine win/lose
+  // We have the betResults which tell us net for each bet
+  // Each betResult has: userId, cardNumber, betDescr, wager, net
+  
+  // Helper to convert suit name to symbol
+  function suitNameToSymbol(name) {
+    switch (name.toLowerCase()) {
+      case 'spades': return '♠';
+      case 'hearts': return '♥';
+      case 'diamonds': return '♦';
+      case 'clubs': return '♣';
+      default: return name;
+    }
+  }
+  
+  // Create a lookup by constructing expected spotIds from betDescr
+  const betLookup = {};
+  cardBets.forEach(bet => {
+    // Convert betDescr to spotId format
+    // Server betDescr examples: "Diamonds", "Hearts or Clubs", "Odd", "Joker", "Lowest"
+    // DOM spotId examples: "card1-suit-♦", "card1-suits-♥♣", "card1-odd", "card1-joker", "card1-low"
+    let spotId = `card${cardNumber}-`;
+    const descr = bet.betDescr.toLowerCase();
+    
+    if (descr.includes(' or ')) {
+      // Double suit bet like "Hearts or Clubs"
+      const suits = descr.split(' or ').map(s => suitNameToSymbol(s.trim()));
+      spotId += 'suits-' + suits.join('');
+    } else if (['diamonds', 'hearts', 'spades', 'clubs'].includes(descr)) {
+      // Single suit bet
+      spotId += 'suit-' + suitNameToSymbol(descr);
+    } else if (descr === 'odd') {
+      spotId += 'odd';
+    } else if (descr === 'even') {
+      spotId += 'even';
+    } else if (descr === 'joker') {
+      spotId += 'joker';
+    } else if (descr === 'ace') {
+      spotId += 'ace';
+    } else if (descr === 'lowest') {
+      spotId += 'low';
+    } else if (descr === 'middle') {
+      spotId += 'mid';
+    } else if (descr === 'highest') {
+      spotId += 'high';
+    } else {
+      // Fallback - shouldn't happen with proper server data
+      spotId += descr.replace(/\s+/g, '-');
+    }
+    
+    const key = `${bet.userId}:${spotId}`;
+    if (!betLookup[key]) {
+      betLookup[key] = { net: 0, wager: 0 };
+    }
+    betLookup[key].net += bet.net;
+    betLookup[key].wager += bet.wager;
+  });
+
+  // Now process each chip
+  const animationPromises = [];
+  
+  allChips.forEach(chip => {
+    const chipSpotId = chip.dataset.spotId;
+    const chipUserId = chip.dataset.userId;
+    
+    if (!chipSpotId || !chipSpotId.startsWith(`card${cardNumber}-`)) {
+      return; // Not for this card
+    }
+    
+    const lookupKey = `${chipUserId}:${chipSpotId}`;
+    const result = betLookup[lookupKey];
+    
+    if (!result) {
+      // No result for this chip (shouldn't happen normally)
+      return;
+    }
+    
+    const spotEl = chip.parentElement;
+    
+    // Create and show result badge
+    const badge = document.createElement('div');
+    badge.className = 'bet-result-badge';
+    
+    if (result.net > 0) {
+      // WIN
+      badge.classList.add('win');
+      badge.textContent = `+${result.net}`;
+      chip.classList.add('winning');
+      if (spotEl) spotEl.classList.add('spot-win');
+    } else if (result.net < 0) {
+      // LOSS
+      badge.classList.add('loss');
+      badge.textContent = `${result.net}`;
+      chip.classList.add('losing');
+      if (spotEl) spotEl.classList.add('spot-loss');
+    } else {
+      // PUSH (net = 0)
+      badge.classList.add('push');
+      badge.textContent = '0';
+    }
+    
+    // Position badge near the chip
+    if (spotEl) {
+      spotEl.appendChild(badge);
+    }
+    
+    // Track animation completion
+    const animPromise = new Promise(resolve => {
+      setTimeout(resolve, result.net >= 0 ? 1200 : 800);
+    });
+    animationPromises.push(animPromise);
+  });
+
+  // Wait for all animations to complete
+  await Promise.all(animationPromises);
+  
+  // Small extra delay for visual clarity
+  await delay(300);
+}
+
+/**
+ * Check for longshot wins on a specific card and trigger celebration
+ * @param {number} cardNumber - 1, 2, or 3
+ * @param {Array} longShotWins - Array of longshot wins
+ * @returns {Promise} - Resolves when celebration completes (or immediately if none)
+ */
+async function checkAndTriggerCardLongshot(cardNumber, longShotWins) {
+  if (!longShotWins || longShotWins.length === 0) {
+    return;
+  }
+  
+  // Filter for longshots on this specific card
+  const cardLongshots = longShotWins.filter(ls => ls.cardNumber === cardNumber);
+  
+  if (cardLongshots.length > 0) {
+    console.log(`[checkAndTriggerCardLongshot] Card ${cardNumber} has longshot wins:`, cardLongshots);
+    await triggerLongShotCelebration(cardLongshots);
+  }
+}
+
+/**
+ * Show the inline summary panel with round results
+ * @param {Array} betResults - All bet results 
+ */
+function showSummaryPanel(betResults) {
+  // Aggregate results by player
+  const playerTotals = {};
+  let totalPot = 0;
+  let biggestWin = 0;
+  let biggestLoss = 0;
+
+  betResults.forEach((result) => {
+    const { userId, username, wager, net } = result;
+    totalPot += wager;
+
+    if (!playerTotals[userId]) {
+      playerTotals[userId] = {
+        userId,
+        username,
+        totalWager: 0,
+        totalNet: 0,
+        bets: []
+      };
+    }
+    playerTotals[userId].totalWager += wager;
+    playerTotals[userId].totalNet += net;
+    playerTotals[userId].bets.push(result);
+
+    if (net > biggestWin) biggestWin = net;
+    if (net < biggestLoss) biggestLoss = net;
+  });
+
+  // Convert to array and sort by net result (highest first)
+  const sortedPlayers = Object.values(playerTotals).sort((a, b) => b.totalNet - a.totalNet);
+
+  // Get current user's total net
+  const myData = playerTotals[currentUserId];
+  const myNet = myData ? myData.totalNet : 0;
+
+  // === Update Desktop Summary Panel ===
+  const summaryPanel = document.getElementById('summary-panel');
+  const summaryYourNet = document.getElementById('summary-your-net');
+  const summaryStandings = document.getElementById('summary-standings');
+  const summaryTotalPot = document.getElementById('summary-total-pot');
+  const summaryBiggestWin = document.getElementById('summary-biggest-win');
+  const summaryBiggestLoss = document.getElementById('summary-biggest-loss');
+
+  if (summaryYourNet) {
+    const netSign = myNet > 0 ? '+' : '';
+    summaryYourNet.textContent = `${netSign}${myNet}`;
+    summaryYourNet.className = 'summary-your-value';
+    if (myNet > 0) summaryYourNet.classList.add('positive');
+    else if (myNet < 0) summaryYourNet.classList.add('negative');
+  }
+
+  if (summaryStandings) {
+    summaryStandings.innerHTML = '';
+    sortedPlayers.forEach(player => {
+      const row = document.createElement('div');
+      row.className = 'summary-player-row';
+      if (player.userId === currentUserId) row.classList.add('is-you');
+
+      let netClass = 'neutral';
+      if (player.totalNet > 0) netClass = 'positive';
+      else if (player.totalNet < 0) netClass = 'negative';
+
+      const netSign = player.totalNet > 0 ? '+' : '';
+      
+      row.innerHTML = `
+        <span class="summary-player-name" style="color: ${getUserColor(player.userId)}">${player.username}</span>
+        <span class="summary-player-net ${netClass}">${netSign}${player.totalNet}</span>
+      `;
+      summaryStandings.appendChild(row);
+    });
+  }
+
+  if (summaryTotalPot) summaryTotalPot.textContent = totalPot;
+  if (summaryBiggestWin) summaryBiggestWin.textContent = biggestWin > 0 ? `+${biggestWin}` : '0';
+  if (summaryBiggestLoss) summaryBiggestLoss.textContent = biggestLoss < 0 ? biggestLoss : '0';
+
+  // === Update Mobile Summary Panel ===
+  const summaryMobileYourNet = document.getElementById('summary-mobile-your-net');
+  const summaryMobileStandings = document.getElementById('summary-mobile-standings');
+  const summaryMobilePot = document.getElementById('summary-mobile-pot');
+  const summaryMobileBest = document.getElementById('summary-mobile-best');
+  const summaryMobileWorst = document.getElementById('summary-mobile-worst');
+
+  if (summaryMobileYourNet) {
+    const netSign = myNet > 0 ? '+' : '';
+    summaryMobileYourNet.textContent = `${netSign}${myNet}`;
+    summaryMobileYourNet.className = 'summary-mobile-your-value';
+    if (myNet > 0) summaryMobileYourNet.classList.add('positive');
+    else if (myNet < 0) summaryMobileYourNet.classList.add('negative');
+  }
+
+  if (summaryMobileStandings) {
+    summaryMobileStandings.innerHTML = '';
+    sortedPlayers.forEach(player => {
+      const card = document.createElement('div');
+      card.className = 'summary-mobile-player';
+      if (player.userId === currentUserId) card.classList.add('is-you');
+
+      let netClass = 'neutral';
+      if (player.totalNet > 0) netClass = 'positive';
+      else if (player.totalNet < 0) netClass = 'negative';
+
+      const netSign = player.totalNet > 0 ? '+' : '';
+      
+      card.innerHTML = `
+        <div class="summary-mobile-player-name" style="color: ${getUserColor(player.userId)}">${player.username}</div>
+        <div class="summary-mobile-player-net ${netClass}">${netSign}${player.totalNet}</div>
+      `;
+      summaryMobileStandings.appendChild(card);
+    });
+  }
+
+  if (summaryMobilePot) summaryMobilePot.textContent = totalPot;
+  if (summaryMobileBest) summaryMobileBest.textContent = biggestWin > 0 ? `+${biggestWin}` : '0';
+  if (summaryMobileWorst) summaryMobileWorst.textContent = biggestLoss < 0 ? biggestLoss : '0';
+
+  // Show the panels with animation
+  if (summaryPanel) summaryPanel.classList.add('visible');
+  const summaryPanelMobile = document.getElementById('summary-panel-mobile');
+  if (summaryPanelMobile) summaryPanelMobile.classList.add('visible');
+
+  // Trigger toast for winners
+  if (myNet > 0) {
+    showToast(`You won ${myNet} tickets!`, 'success');
+  }
+
+  // Play round results audio
+  if (roundResultsAudio) {
+    roundResultsAudio.play().catch(err => {
+      console.warn('Audio play failed for round-results.mp3:', err);
+    });
+  }
+}
+
+/**
+ * Hide the summary panels
+ */
+function hideSummaryPanels() {
+  const summaryPanel = document.getElementById('summary-panel');
+  const summaryPanelMobile = document.getElementById('summary-panel-mobile');
+  
+  if (summaryPanel) summaryPanel.classList.remove('visible');
+  if (summaryPanelMobile) summaryPanelMobile.classList.remove('visible', 'minimized');
+}
+
+/**
+ * Clear all bet result animations and badges
+ */
+function clearBetResultAnimations() {
+  // Remove all result badges
+  document.querySelectorAll('.bet-result-badge').forEach(badge => badge.remove());
+  
+  // Remove animation classes from chips
+  document.querySelectorAll('.chip.winning, .chip.losing').forEach(chip => {
+    chip.classList.remove('winning', 'losing');
+  });
+  
+  // Remove spot highlight classes
+  document.querySelectorAll('.spot-win, .spot-loss').forEach(spot => {
+    spot.classList.remove('spot-win', 'spot-loss');
+  });
+}
+
+/**
  * Called once we have betResults and we can safely show them (e.g.,
  * after the last card + an additional delay).
+ * NOTE: This is now primarily used for backward compatibility / fallback
  */
 function showPayoutResults(betResults) {
   // Aggregate results by player
@@ -1003,6 +1406,25 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // -------------------------------------------------------------
+  //  Mobile Summary Panel Toggle
+  // -------------------------------------------------------------
+  const mobileHandle = document.getElementById('summary-mobile-handle');
+  const mobileSummaryPanel = document.getElementById('summary-panel-mobile');
+  
+  if (mobileHandle && mobileSummaryPanel) {
+    mobileHandle.addEventListener('click', () => {
+      // Toggle between visible and minimized states
+      if (mobileSummaryPanel.classList.contains('visible')) {
+        if (mobileSummaryPanel.classList.contains('minimized')) {
+          mobileSummaryPanel.classList.remove('minimized');
+        } else {
+          mobileSummaryPanel.classList.add('minimized');
+        }
+      }
+    });
+  }
+
+  // -------------------------------------------------------------
   //  Initialize and load audio files
   // -------------------------------------------------------------
   placeYourBetsAudio = new Audio('/sound/place-your-bets.mp3');
@@ -1113,9 +1535,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // cardsDealt => do a time-staggered reveal
-  socket.on('cardsDealt', (dealData) => {
-    console.log('[cardsDealt] arrived, starting reveal sequence');
+  // cardsDealt => do a time-staggered reveal with progressive results
+  socket.on('cardsDealt', async (dealData) => {
+    console.log('[cardsDealt] arrived, starting progressive reveal sequence');
 
     // Enter dealing phase - cache any ticketUpdate events until cards finish flipping
     isDealingPhase = true;
@@ -1128,125 +1550,137 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Cards are already preloaded on page load, start flip sequence immediately
-    console.log('[cardsDealt] starting flip sequence (cards pre-cached)');
+    console.log('[cardsDealt] starting progressive flip sequence');
 
     // Title word elements for highlight animation
     const titleSteal = document.getElementById('title-steal');
     const titleRyans = document.getElementById('title-ryans');
     const titleMoney = document.getElementById('title-money');
 
-    // Immediately show card 1 and play "steal.mp3" - highlight "Steal"
+    currentRoundStatus = 'resultsPending';
+
+    // Helper to wait for bet results if not yet available
+    async function waitForBetResults(maxWait = 5000) {
+      const startTime = Date.now();
+      while (!betResultsCache && (Date.now() - startTime) < maxWait) {
+        await delay(100);
+      }
+      return betResultsCache;
+    }
+
+    // ===== CARD 1 =====
+    console.log('[cardsDealt] Revealing Card 1');
     revealCard(cardSlot1, dealData.card1, 'Card 1');
     stealAudio.play().catch(err => {
       console.warn('Audio play failed for steal.mp3:', err);
     });
     if (titleSteal) titleSteal.classList.add('highlight');
+    
+    // Wait for flip animation
+    await delay(800);
+    
+    // Show bet results for card 1 (if we have them)
+    let betResults = betResultsCache || await waitForBetResults();
+    if (betResults) {
+      await showCardBetResults(1, betResults);
+      // Check for longshot on card 1
+      await checkAndTriggerCardLongshot(1, longShotWinsCache);
+    }
+    
+    // Remove highlight from "Steal"
+    if (titleSteal) titleSteal.classList.remove('highlight');
+    
+    // Delay before next card
+    await delay(1500);
 
-    // 2s later => show card 2 and play "ryans.mp3" - highlight "Ryan's"
-    setTimeout(() => {
-      console.log('[cardsDealt] 2s later, flipping card 2');
-      revealCard(cardSlot2, dealData.card2, 'Card 2');
-      ryansAudio.play().catch(err => {
-        console.warn('Audio play failed for ryans.mp3:', err);
-      });
-      if (titleSteal) titleSteal.classList.remove('highlight');
-      if (titleRyans) titleRyans.classList.add('highlight');
-    }, 2000);
+    // ===== CARD 2 =====
+    console.log('[cardsDealt] Revealing Card 2');
+    revealCard(cardSlot2, dealData.card2, 'Card 2');
+    ryansAudio.play().catch(err => {
+      console.warn('Audio play failed for ryans.mp3:', err);
+    });
+    if (titleRyans) titleRyans.classList.add('highlight');
+    
+    // Wait for flip animation
+    await delay(800);
+    
+    // Show bet results for card 2
+    betResults = betResultsCache || await waitForBetResults();
+    if (betResults) {
+      await showCardBetResults(2, betResults);
+      // Check for longshot on card 2
+      await checkAndTriggerCardLongshot(2, longShotWinsCache);
+    }
+    
+    // Remove highlight from "Ryan's"
+    if (titleRyans) titleRyans.classList.remove('highlight');
+    
+    // Delay before next card
+    await delay(1500);
 
-    // 4s later => show card 3 and play "money.mp3" - highlight "Money"
-    setTimeout(() => {
-      console.log('[cardsDealt] 4s later, flipping card 3');
-      revealCard(cardSlot3, dealData.card3, 'Card 3');
-      moneyAudio.play().catch(err => {
-        console.warn('Audio play failed for money.mp3:', err);
-      });
-      if (titleRyans) titleRyans.classList.remove('highlight');
-      if (titleMoney) titleMoney.classList.add('highlight');
-      finishedDealing = true;
+    // ===== CARD 3 =====
+    console.log('[cardsDealt] Revealing Card 3');
+    revealCard(cardSlot3, dealData.card3, 'Card 3');
+    moneyAudio.play().catch(err => {
+      console.warn('Audio play failed for money.mp3:', err);
+    });
+    if (titleMoney) titleMoney.classList.add('highlight');
+    finishedDealing = true;
+    
+    // Wait for flip animation
+    await delay(800);
+    
+    // Show bet results for card 3
+    betResults = betResultsCache || await waitForBetResults();
+    if (betResults) {
+      await showCardBetResults(3, betResults);
+      // Check for longshot on card 3
+      await checkAndTriggerCardLongshot(3, longShotWinsCache);
+    }
+    
+    // Remove highlight from "Money"
+    if (titleMoney) titleMoney.classList.remove('highlight');
 
-      // Wait 2 more seconds => if we already have payoutResults, show them (and play round results audio)
-      setTimeout(async () => {
-        console.log('[cardsDealt] 6s total, check if payoutResultsCache => show overlay');
-        
-        // Reset "Money" highlight now that all cards are revealed
-        if (titleMoney) titleMoney.classList.remove('highlight');
-        
-        // Apply cached ticket updates now that cards are revealed
-        ticketUpdateCache.forEach(data => {
-          updatePlayerBalance(data.userId, data.username, data.ticketBalance);
-        });
-        ticketUpdateCache = [];
-        isDealingPhase = false;
-        
-        if (payoutResultsCache) {
-          // Check if we have long shot wins to celebrate first
-          if (longShotWinsCache && longShotWinsCache.length > 0) {
-            console.log('[cardsDealt] triggering long shot celebration first');
-            await triggerLongShotCelebration(longShotWinsCache);
-            longShotWinsCache = null;
-          }
-          
-          // NEW: play round-results.mp3 when the round results appear
-          roundResultsAudio.play().catch(err => {
-            console.warn('Audio play failed for round-results.mp3:', err);
-          });
-          showPayoutResults(payoutResultsCache);
-          payoutResultsCache = null;
-        }
-        
-        // Switch dealer button from "Dealing" to "Clear" after results are shown
-        if (dealButton) {
-          dealButton.textContent = 'Clear';
-          dealButton.classList.remove('dealing');
-        }
-      }, 2000);
+    // Apply cached ticket updates now that all cards are revealed
+    ticketUpdateCache.forEach(data => {
+      updatePlayerBalance(data.userId, data.username, data.ticketBalance);
+    });
+    ticketUpdateCache = [];
+    isDealingPhase = false;
 
-    }, 4000);
+    // Show summary panel after a brief delay
+    await delay(1000);
+    
+    if (betResults) {
+      showSummaryPanel(betResults);
+    }
+    
+    // Clear longshot cache
+    longShotWinsCache = null;
 
-    // We can set global status if we want
-    currentRoundStatus = 'resultsPending';
+    // Switch dealer button from "Dealing" to "Clear" after results are shown
+    if (dealButton) {
+      dealButton.textContent = 'Clear';
+      dealButton.classList.remove('dealing');
+    }
+    
+    console.log('[cardsDealt] Progressive reveal sequence complete');
   });
 
-  // longShotWins => trigger celebration before showing results
+  // longShotWins => cache for per-card celebrations
   socket.on('longShotWins', (longShotWins) => {
     console.log('[longShotWins] event arrived:', longShotWins);
     longShotWinsCache = longShotWins;
   });
 
-  // payouts => display them 2s after last card if done, or cache them
+  // payouts => cache for progressive reveal (cardsDealt handles the display)
   socket.on('payoutResults', (betResults) => {
-    console.log('[payoutResults] event arrived');
-    if (finishedDealing) {
-      setTimeout(async () => {
-        // Apply cached ticket updates now that cards are revealed
-        ticketUpdateCache.forEach(data => {
-          updatePlayerBalance(data.userId, data.username, data.ticketBalance);
-        });
-        ticketUpdateCache = [];
-        isDealingPhase = false;
-        
-        // Check if we have long shot wins to celebrate first
-        if (longShotWinsCache && longShotWinsCache.length > 0) {
-          console.log('[payoutResults] triggering long shot celebration first');
-          await triggerLongShotCelebration(longShotWinsCache);
-          longShotWinsCache = null;
-        }
-        
-        // NEW: play round-results.mp3 when the round results appear
-        roundResultsAudio.play().catch(err => {
-          console.warn('Audio play failed for round-results.mp3:', err);
-        });
-        showPayoutResults(betResults);
-        
-        // Switch dealer button from "Dealing" to "Clear" after results are shown
-        if (dealButton) {
-          dealButton.textContent = 'Clear';
-          dealButton.classList.remove('dealing');
-        }
-      }, 2000);
-    } else {
-      payoutResultsCache = betResults;
-    }
+    console.log('[payoutResults] event arrived, caching for progressive reveal');
+    // Store in betResultsCache for the progressive reveal sequence to use
+    betResultsCache = betResults;
+    
+    // Also keep payoutResultsCache for backward compatibility
+    payoutResultsCache = betResults;
   });
 
 
@@ -1309,8 +1743,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // roundCleared => UI reset
   socket.on('roundCleared', () => {
+    // Clear all bet result animations and badges first
+    clearBetResultAnimations();
+    
+    // Remove all chips
     document.querySelectorAll('.chip').forEach(chip => chip.remove());
+    
+    // Hide legacy modal (if somehow shown)
     payoutResultsContainer.style.display = 'none';
+    
+    // Hide summary panels
+    hideSummaryPanels();
 
     if (isDealer && dealButton) {
       dealButton.textContent = 'Deal';
@@ -1333,6 +1776,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Reset flags for all clients
     finishedDealing = false;
     payoutResultsCache = null;
+    betResultsCache = null;  // Also clear the new cache
     dealtCardsCache = null;
     longShotWinsCache = null;
     longShotCelebrationActive = false;

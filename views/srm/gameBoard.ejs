@@ -215,7 +215,83 @@
 
   </div> <!-- end game-wrapper -->
 
-  <!-- Round Results Modal -->
+  <!-- Inline Summary Panel (Desktop - Right Side) -->
+  <div id="summary-panel" class="summary-panel">
+    <div class="summary-panel-header">
+      <h3 class="summary-title">Round Summary</h3>
+    </div>
+    
+    <!-- Your Net Result - Prominent -->
+    <div class="summary-your-result">
+      <span class="summary-your-label">Your Net</span>
+      <span id="summary-your-net" class="summary-your-value">0</span>
+    </div>
+    
+    <!-- Player Standings -->
+    <div class="summary-section">
+      <h4 class="summary-section-title">Standings</h4>
+      <div id="summary-standings" class="summary-standings-list">
+        <!-- Player rows inserted here -->
+      </div>
+    </div>
+    
+    <!-- Round Stats -->
+    <div class="summary-section">
+      <h4 class="summary-section-title">Round Stats</h4>
+      <div class="summary-stats">
+        <div class="summary-stat-row">
+          <span class="summary-stat-label">Total Pot</span>
+          <span id="summary-total-pot" class="summary-stat-value">0</span>
+        </div>
+        <div class="summary-stat-row">
+          <span class="summary-stat-label">Biggest Win</span>
+          <span id="summary-biggest-win" class="summary-stat-value win">0</span>
+        </div>
+        <div class="summary-stat-row">
+          <span class="summary-stat-label">Biggest Loss</span>
+          <span id="summary-biggest-loss" class="summary-stat-value loss">0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Summary Panel (Bottom Slide-up) -->
+  <div id="summary-panel-mobile" class="summary-panel-mobile">
+    <div class="summary-mobile-handle" id="summary-mobile-handle">
+      <div class="handle-bar"></div>
+      <span class="handle-label">Round Summary</span>
+    </div>
+    <div class="summary-mobile-content">
+      <!-- Your Net Result -->
+      <div class="summary-mobile-your-result">
+        <span class="summary-mobile-your-label">Your Net</span>
+        <span id="summary-mobile-your-net" class="summary-mobile-your-value">0</span>
+      </div>
+      
+      <!-- Compact Standings -->
+      <div class="summary-mobile-standings" id="summary-mobile-standings">
+        <!-- Compact player rows -->
+      </div>
+      
+      <!-- Compact Stats -->
+      <div class="summary-mobile-stats">
+        <div class="mobile-stat">
+          <span class="mobile-stat-label">Pot</span>
+          <span id="summary-mobile-pot" class="mobile-stat-value">0</span>
+        </div>
+        <div class="mobile-stat">
+          <span class="mobile-stat-label">Best</span>
+          <span id="summary-mobile-best" class="mobile-stat-value win">0</span>
+        </div>
+        <div class="mobile-stat">
+          <span class="mobile-stat-label">Worst</span>
+          <span id="summary-mobile-worst" class="mobile-stat-value loss">0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Round Results Modal (Legacy - Hidden) -->
   <div id="payout-results" class="results-modal-overlay" style="display: none;">
     <div class="results-modal">
       <!-- Confetti container for winners -->
