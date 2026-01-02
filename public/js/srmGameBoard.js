@@ -894,17 +894,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const sidebar = document.getElementById('player-sidebar');
 
   if (hudToggle && sidebar) {
-      // Open the sidebar by default
+      // Open the sidebar by default and hide the toggle button
       sidebar.classList.add('open');
+      hudToggle.style.display = 'none';
       
       hudToggle.addEventListener('click', () => {
           sidebar.classList.add('open');
+          hudToggle.style.display = 'none';
       });
   }
 
   if (hudClose && sidebar) {
       hudClose.addEventListener('click', () => {
           sidebar.classList.remove('open');
+          hudToggle.style.display = '';
       });
   }
 
