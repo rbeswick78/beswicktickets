@@ -590,32 +590,17 @@ async function showCardBetResults(cardNumber, allBetResults) {
     
     const spotEl = chip.parentElement;
     
-    // Create and show result badge
-    const badge = document.createElement('div');
-    badge.className = 'bet-result-badge';
-    
+    // Apply win/lose effects to chips (no badges displayed)
     if (result.net > 0) {
-      // WIN
-      badge.classList.add('win');
-      badge.textContent = `+${result.net}`;
+      // WIN - apply winning shimmer effect
       chip.classList.add('winning');
       if (spotEl) spotEl.classList.add('spot-win');
     } else if (result.net < 0) {
-      // LOSS
-      badge.classList.add('loss');
-      badge.textContent = `${result.net}`;
+      // LOSS - apply cracked/broken effect (chip stays visible)
       chip.classList.add('losing');
       if (spotEl) spotEl.classList.add('spot-loss');
-    } else {
-      // PUSH (net = 0)
-      badge.classList.add('push');
-      badge.textContent = '0';
     }
-    
-    // Position badge near the chip
-    if (spotEl) {
-      spotEl.appendChild(badge);
-    }
+    // PUSH (net = 0) - no visual effect applied
     
     // Track animation completion
     const animPromise = new Promise(resolve => {

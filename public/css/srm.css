@@ -1627,70 +1627,106 @@ h1, h2, h3, .srm-title {
    Progressive Results - Chip Animations
    ========================================= */
 
-/* Winning chip animation - override base animation */
+/* Winning chip animation - continuous rotating shimmer */
 .chip.winning {
-  animation-name: chipWin;
-  animation-duration: 1.2s;
-  animation-timing-function: ease-out;
-  animation-fill-mode: forwards;
   z-index: 20;
+  transform: scale(1.08);
+  box-shadow: 
+    inset 0 0 0 0.2em rgba(0,0,0,0.3),
+    0.15em 0.15em 0.3em rgba(0,0,0,0.4),
+    0 0 12px rgba(255, 215, 0, 0.6);
 }
 
-@keyframes chipWin {
+/* Winning chip rotating shimmer highlight */
+.chip.winning::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 60deg,
+    rgba(255, 255, 255, 0.7) 90deg,
+    rgba(255, 248, 200, 0.9) 120deg,
+    rgba(255, 255, 255, 0.7) 150deg,
+    transparent 180deg,
+    transparent 360deg
+  );
+  animation: shimmerRotate 2s linear infinite;
+  pointer-events: none;
+  mask: radial-gradient(circle, transparent 45%, black 50%, black 100%);
+  -webkit-mask: radial-gradient(circle, transparent 45%, black 50%, black 100%);
+}
+
+@keyframes shimmerRotate {
   0% {
-    transform: scale(1);
-    box-shadow: 
-      inset 0 0 0 0.2em rgba(0,0,0,0.3),
-      0.15em 0.15em 0.3em rgba(0,0,0,0.4);
-  }
-  25% {
-    transform: scale(1.15);
-    box-shadow: 
-      inset 0 0 0 0.2em rgba(0,0,0,0.3),
-      0.15em 0.15em 0.3em rgba(0,0,0,0.4),
-      0 0 20px rgba(255, 215, 0, 0.8),
-      0 0 40px rgba(255, 215, 0, 0.5);
-  }
-  50% {
-    transform: scale(1.1);
+    transform: rotate(0deg);
   }
   100% {
-    transform: scale(1.05);
-    box-shadow: 
-      inset 0 0 0 0.2em rgba(0,0,0,0.3),
-      0.15em 0.15em 0.3em rgba(0,0,0,0.4),
-      0 0 15px rgba(255, 215, 0, 0.6),
-      0 0 30px rgba(255, 215, 0, 0.3);
+    transform: rotate(360deg);
   }
 }
 
-/* Winning chip persistent glow */
+/* Winning chip subtle golden glow pulse */
 .chip.winning::after {
   content: '';
   position: absolute;
-  top: -4px;
-  left: -4px;
-  right: -4px;
-  bottom: -4px;
+  top: -6px;
+  left: -6px;
+  right: -6px;
+  bottom: -6px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 215, 0, 0.4) 0%, transparent 70%);
-  animation: chipWinGlow 1.5s ease-in-out infinite alternate;
+  background: radial-gradient(circle, rgba(255, 215, 0, 0.35) 0%, transparent 70%);
+  animation: winGlowPulse 1.5s ease-in-out infinite;
   pointer-events: none;
 }
 
-@keyframes chipWinGlow {
-  0% {
-    opacity: 0.5;
+@keyframes winGlowPulse {
+  0%, 100% {
+    opacity: 0.6;
     transform: scale(1);
   }
-  100% {
+  50% {
     opacity: 1;
-    transform: scale(1.2);
+    transform: scale(1.15);
   }
 }
 
-/* Winning chip sparkle effect */
-.chip.winning::before {
+/* Losing chip animation - cracked/broken appearance (stays visible) */
+.chip.losing {
+  animation: chipLoseShake 0.4s ease-out;
+  filter: grayscale(0.6) brightness(0.75);
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+@keyframes chipLoseShake {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  20% {
+    transform: scale(0.95) rotate(-3deg);
+  }
+  40% {
+    transform: scale(0.97) rotate(2deg);
+  }
+  60% {
+    transform: scale(0.96) rotate(-1deg);
+  }
+  80% {
+    transform: scale(0.98) rotate(1deg);
+  }
+  100% {
+    transform: scale(0.95) rotate(0deg);
+  }
+}
+
+/* Losing chip crack overlay */
+.chip.losing::before {
   content: '';
   position: absolute;
   top: 0;
@@ -1698,50 +1734,47 @@ h1, h2, h3, .srm-title {
   right: 0;
   bottom: 0;
   border-radius: 50%;
-  background: 
-    radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.8) 0%, transparent 30%),
-    radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.4) 0%, transparent 20%);
-  animation: chipSparkle 0.8s ease-out;
+  /* SVG crack pattern overlay */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 15 L48 35 L42 45 L35 48 L25 50' stroke='%23333' stroke-width='2' fill='none' opacity='0.7'/%3E%3Cpath d='M50 15 L53 30 L60 42 L68 48 L78 52' stroke='%23333' stroke-width='2' fill='none' opacity='0.7'/%3E%3Cpath d='M48 35 L40 38 L32 55' stroke='%23333' stroke-width='1.5' fill='none' opacity='0.5'/%3E%3Cpath d='M53 30 L58 35 L70 38' stroke='%23333' stroke-width='1.5' fill='none' opacity='0.5'/%3E%3Cpath d='M42 45 L38 60 L42 75' stroke='%23333' stroke-width='1.5' fill='none' opacity='0.5'/%3E%3Cpath d='M60 42 L65 58 L60 72' stroke='%23333' stroke-width='1.5' fill='none' opacity='0.5'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
   pointer-events: none;
+  animation: crackAppear 0.3s ease-out forwards;
 }
 
-@keyframes chipSparkle {
+@keyframes crackAppear {
   0% {
     opacity: 0;
-    transform: scale(0.8);
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Losing chip red tint border */
+.chip.losing::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border-radius: 50%;
+  border: 2px solid rgba(220, 38, 38, 0.5);
+  box-shadow: inset 0 0 8px rgba(220, 38, 38, 0.3);
+  pointer-events: none;
+  animation: loseGlow 2s ease-in-out infinite;
+}
+
+@keyframes loseGlow {
+  0%, 100% {
+    border-color: rgba(220, 38, 38, 0.4);
+    box-shadow: inset 0 0 6px rgba(220, 38, 38, 0.2);
   }
   50% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.3);
-  }
-}
-
-/* Losing chip animation - override base animation */
-.chip.losing {
-  animation-name: chipLose;
-  animation-duration: 0.8s;
-  animation-timing-function: ease-out;
-  animation-fill-mode: forwards;
-  pointer-events: none;
-}
-
-@keyframes chipLose {
-  0% {
-    transform: scale(1);
-    opacity: 1;
-    filter: grayscale(0);
-  }
-  30% {
-    transform: scale(0.95) translateY(2px);
-    filter: grayscale(0.5);
-  }
-  100% {
-    transform: scale(0.3) translateY(20px);
-    opacity: 0;
-    filter: grayscale(1);
+    border-color: rgba(220, 38, 38, 0.6);
+    box-shadow: inset 0 0 10px rgba(220, 38, 38, 0.4);
   }
 }
 
