@@ -47,7 +47,7 @@ async function computePayouts(gameId, chosenCards, io) {
     }
 
     // Handy function to figure out L/M/H outcome for a single card
-    // Returns: 'lowest' | 'lowest-tie' | 'middle' | 'middle-tie' | 'highest' | 'highest-tie'
+    // Returns: 'lowest' | 'lowest-tie' | 'middle' | 'middle-tie' | 'highest' | 'highest-tie' | 'all-tie'
     // or null if something's off.
     function getCardPosition(cardIndex, allCards) {
       const ranks = allCards.map(c => parseRankForComparison(c.rank));
@@ -56,7 +56,7 @@ async function computePayouts(gameId, chosenCards, io) {
       // If any card is a Joker => we handle that outside to force a loss
       // But we'll handle tie logic if no Joker present:
 
-      // Count how many cards are strictly less / equal / greater
+      // Count how many cards are strictly less / equal / greater than this card
       let lessCount = 0, greaterCount = 0, equalCount = 0;
       for (let i = 0; i < ranks.length; i++) {
         if (i === cardIndex) continue;
@@ -65,24 +65,36 @@ async function computePayouts(gameId, chosenCards, io) {
         else equalCount++;
       }
 
-      // If lessCount=2 => this is strictly highest
-      // If greaterCount=2 => this is strictly lowest
-      // If lessCount=1 && greaterCount=1 => strictly middle
-      // Ties => "-tie"
-      // For example, if lessCount=2 && equalCount>0 => that's a tie for highest => 'highest-tie'
-      if (greaterCount === 2) {
-        return (equalCount > 0) ? 'lowest-tie' : 'lowest';
-      } else if (lessCount === 2) {
-        return (equalCount > 0) ? 'highest-tie' : 'highest';
-      } else if (lessCount === 1 && greaterCount === 1) {
-        // means exactly in the middle
-        return (equalCount > 0) ? 'middle-tie' : 'middle';
+      // All 3 cards have the same rank => all L/M/H bets should push
+      if (equalCount === 2) {
+        return 'all-tie';
       }
 
-      // If all 3 the same rank => each card has 0 greater, 0 less => 'middle-tie' is fine
-      if (lessCount === 0 && greaterCount === 0 && equalCount === 2) {
-        return 'middle-tie';
+      // Strictly highest: this card is greater than both others
+      if (lessCount === 2) {
+        return 'highest';
       }
+
+      // Strictly lowest: this card is less than both others
+      if (greaterCount === 2) {
+        return 'lowest';
+      }
+
+      // Strictly middle: one card higher, one card lower
+      if (lessCount === 1 && greaterCount === 1) {
+        return 'middle';
+      }
+
+      // Tied for highest: equal to one card, greater than the other (e.g., Q-9-Q)
+      if (lessCount === 1 && equalCount === 1 && greaterCount === 0) {
+        return 'highest-tie';
+      }
+
+      // Tied for lowest: equal to one card, less than the other (e.g., 5-9-5)
+      if (greaterCount === 1 && equalCount === 1 && lessCount === 0) {
+        return 'lowest-tie';
+      }
+
       return null;
     }
 
@@ -203,6 +215,9 @@ async function computePayouts(gameId, chosenCards, io) {
           // If position is null => something odd, no payout
           if (!position) {
             totalPayout = 0;
+          } else if (position === 'all-tie') {
+            // All 3 cards have the same rank => all L/M/H bets push
+            totalPayout = amount;
           } else {
             // Are we betting on 'low', 'mid', or 'high'?
             const isBetLow = spotId.endsWith('-low');
