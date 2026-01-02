@@ -170,7 +170,7 @@ h1, h2, h3, .srm-title {
 }
 
 .betting-container > div {
-  background-color: var(--maroon);
+  background: linear-gradient(180deg, #9a1a1a 0%, var(--maroon) 40%, var(--maroon-dark) 100%);
   border: 0.1em solid rgba(212, 175, 55, 0.3);
   border-radius: 0.4em;
   position: relative;
@@ -178,7 +178,7 @@ h1, h2, h3, .srm-title {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s, box-shadow 0.2s;
+  transition: background 0.2s, box-shadow 0.2s;
   color: var(--gold-accent);
   font-weight: bold;
 }
@@ -202,7 +202,7 @@ h1, h2, h3, .srm-title {
 
 /* Interactions */
 .betting-container > div:hover {
-  background-color: #a00000;
+  background: linear-gradient(180deg, #b02020 0%, #a00000 40%, #700000 100%);
   box-shadow: 0 0 1em var(--gold-accent);
   border-color: var(--gold-accent);
 }
