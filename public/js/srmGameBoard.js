@@ -1165,12 +1165,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Reset "Money" highlight now that all cards are revealed
         if (titleMoney) titleMoney.classList.remove('highlight');
         
-        // Switch dealer button from "Dealing" to "Clear"
-        if (dealButton) {
-          dealButton.textContent = 'Clear';
-          dealButton.classList.remove('dealing');
-        }
-        
         // Apply cached ticket updates now that cards are revealed
         ticketUpdateCache.forEach(data => {
           updatePlayerBalance(data.userId, data.username, data.ticketBalance);
@@ -1192,6 +1186,12 @@ document.addEventListener('DOMContentLoaded', () => {
           });
           showPayoutResults(payoutResultsCache);
           payoutResultsCache = null;
+        }
+        
+        // Switch dealer button from "Dealing" to "Clear" after results are shown
+        if (dealButton) {
+          dealButton.textContent = 'Clear';
+          dealButton.classList.remove('dealing');
         }
       }, 2000);
 
@@ -1231,6 +1231,12 @@ document.addEventListener('DOMContentLoaded', () => {
           console.warn('Audio play failed for round-results.mp3:', err);
         });
         showPayoutResults(betResults);
+        
+        // Switch dealer button from "Dealing" to "Clear" after results are shown
+        if (dealButton) {
+          dealButton.textContent = 'Clear';
+          dealButton.classList.remove('dealing');
+        }
       }, 2000);
     } else {
       payoutResultsCache = betResults;
