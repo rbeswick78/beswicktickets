@@ -69,7 +69,7 @@ h1, h2, h3, .srm-title {
    ========================================= */
 
 .game-wrapper {
-    padding-bottom: calc(var(--action-bar-height) + env(safe-area-inset-bottom, 0px) + 1rem); /* Space for fixed action bar */
+    padding-bottom: calc(var(--action-bar-height) + env(safe-area-inset-bottom, 0px) + 2rem); /* Space for floating action bar + gap */
 }
 
 #card-container {
@@ -297,15 +297,18 @@ h1, h2, h3, .srm-title {
 
 .player-sidebar {
   position: fixed;
-  top: 0;
+  top: 60px;
   left: -320px;
   width: 300px;
   height: auto;
-  max-height: calc(100vh - var(--action-bar-height) - env(safe-area-inset-bottom, 0px) - 8rem);
+  max-height: calc(100vh - var(--action-bar-height) - env(safe-area-inset-bottom, 0px) - 10rem);
   background: rgba(0, 0, 0, 0.9);
-  border-right: 2px solid var(--gold-accent);
-  border-bottom: 2px solid var(--gold-accent);
-  border-bottom-right-radius: 8px;
+  border: 2px solid var(--gold-accent);
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5),
+              0 0 20px rgba(212, 175, 55, 0.1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   transition: left 0.3s ease;
   z-index: 2000;
   padding: 1rem;
@@ -315,7 +318,7 @@ h1, h2, h3, .srm-title {
 }
 
 .player-sidebar.open {
-  left: 0;
+  left: 12px;
 }
 
 .sidebar-header {
@@ -347,12 +350,18 @@ h1, h2, h3, .srm-title {
 
 .action-bar {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100%;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  width: auto;
   height: var(--action-bar-height);
-  background: rgba(0, 0, 0, 0.95);
-  border-top: 2px solid var(--gold-accent);
+  background: rgba(0, 0, 0, 0.9);
+  border: 2px solid var(--gold-accent);
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5),
+              0 0 30px rgba(212, 175, 55, 0.15);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -617,7 +626,22 @@ h1, h2, h3, .srm-title {
   }
   
   .action-bar {
+    bottom: 8px;
+    left: 8px;
+    right: 8px;
     padding: 0 0.5rem;
+    border-radius: 12px;
+  }
+  
+  .player-sidebar {
+    top: 55px;
+    width: 280px;
+    border-radius: 12px;
+    max-height: calc(100vh - var(--action-bar-height) - env(safe-area-inset-bottom, 0px) - 8rem);
+  }
+  
+  .player-sidebar.open {
+    left: 8px;
   }
   
   .balance-led {
