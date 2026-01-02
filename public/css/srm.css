@@ -324,7 +324,13 @@ h1, h2, h3, .srm-title {
   z-index: 10;
   cursor: pointer;
   
-  animation: chipDrop 0.3s ease-out;
+  animation: chipDrop 0.3s ease-out forwards;
+  animation-fill-mode: forwards;
+}
+
+/* Once chip drop is complete, disable further re-animation of the drop */
+.chip.chip-settled {
+  animation: none;
 }
 
 @keyframes chipDrop {
@@ -1621,9 +1627,12 @@ h1, h2, h3, .srm-title {
    Progressive Results - Chip Animations
    ========================================= */
 
-/* Winning chip animation */
+/* Winning chip animation - override base animation */
 .chip.winning {
-  animation: chipWin 1.2s ease-out forwards;
+  animation-name: chipWin;
+  animation-duration: 1.2s;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
   z-index: 20;
 }
 
@@ -1710,9 +1719,12 @@ h1, h2, h3, .srm-title {
   }
 }
 
-/* Losing chip animation */
+/* Losing chip animation - override base animation */
 .chip.losing {
-  animation: chipLose 0.8s ease-out forwards;
+  animation-name: chipLose;
+  animation-duration: 0.8s;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
   pointer-events: none;
 }
 

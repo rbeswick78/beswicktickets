@@ -322,6 +322,11 @@ function createChipElement(userId, amount, spotId) {
   chipEl.style.color = getUserColor(userId); // Use currentColor in CSS
   chipEl.textContent = amount;
 
+  // Mark chip as settled after drop animation completes to prevent re-animation
+  setTimeout(() => {
+    chipEl.classList.add('chip-settled');
+  }, 350); // Slightly longer than the 0.3s animation
+
   // Only allow removal if this chip belongs to the current user
   if (userId === currentUserId) {
     chipEl.addEventListener('click', (evt) => {
@@ -382,34 +387,45 @@ preloadAllCardImages();
 
 /**
  * Reveal a single card's image in the specified DOM slot using 3D flip
+ * @returns {Promise} - Resolves when the flip animation has started
  */
 function revealCard(slotEl, card, altText) {
-  // Find the inner container for the flip
-  const cardInner = slotEl.querySelector('.card-inner');
-  // Find the back face image (which will be revealed)
-  const faceImg = slotEl.querySelector('.card-back img');
-  
-  if (cardInner && faceImg) {
-    faceImg.src = getCardImageSrc(card);
-    faceImg.alt = altText;
+  return new Promise((resolve) => {
+    // Find the inner container for the flip
+    const cardInner = slotEl.querySelector('.card-inner');
+    // Find the back face image (which will be revealed)
+    const faceImg = slotEl.querySelector('.card-back img');
     
-    // Wait for image to be decoded/rendered before flipping to avoid white flash
-    if (faceImg.decode) {
-      faceImg.decode().then(() => {
-        cardInner.classList.add('flipped');
-      }).catch(() => {
-        // Fallback: flip anyway if decode fails
-        cardInner.classList.add('flipped');
-      });
-    } else {
-      // Fallback for browsers without decode support
-      faceImg.onload = () => cardInner.classList.add('flipped');
-      // If already loaded (cached), flip immediately
-      if (faceImg.complete) {
-        cardInner.classList.add('flipped');
+    if (cardInner && faceImg) {
+      faceImg.src = getCardImageSrc(card);
+      faceImg.alt = altText;
+      
+      // Wait for image to be decoded/rendered before flipping to avoid white flash
+      if (faceImg.decode) {
+        faceImg.decode().then(() => {
+          cardInner.classList.add('flipped');
+          resolve(); // Flip has started
+        }).catch(() => {
+          // Fallback: flip anyway if decode fails
+          cardInner.classList.add('flipped');
+          resolve();
+        });
+      } else {
+        // Fallback for browsers without decode support
+        faceImg.onload = () => {
+          cardInner.classList.add('flipped');
+          resolve();
+        };
+        // If already loaded (cached), flip immediately
+        if (faceImg.complete) {
+          cardInner.classList.add('flipped');
+          resolve();
+        }
       }
+    } else {
+      resolve(); // Nothing to flip, resolve anyway
     }
-  }
+  });
 }
 
 /**
@@ -471,57 +487,27 @@ function getBetKey(userId, spotId) {
  * @returns {Promise} - Resolves when animations complete
  */
 async function showCardBetResults(cardNumber, allBetResults) {
-  // Filter bet results for this card
-  const cardBets = allBetResults.filter(bet => bet.cardNumber === cardNumber);
+  console.log(`[showCardBetResults] Processing card ${cardNumber}, total results:`, allBetResults.length);
+  
+  // Filter bet results for this card (handle both string and number cardNumber)
+  const cardNumStr = String(cardNumber);
+  const cardBets = allBetResults.filter(bet => String(bet.cardNumber) === cardNumStr);
+  
+  console.log(`[showCardBetResults] Found ${cardBets.length} bets for card ${cardNumber}`);
   
   if (cardBets.length === 0) {
     return; // No bets for this card
   }
 
-  // Group bets by spotId to aggregate multiple bets on the same spot by the same user
-  const spotResults = {};
-  cardBets.forEach(bet => {
-    const key = getBetKey(bet.userId, `card${cardNumber}-${bet.betDescr.replace(/\s+/g, '-').toLowerCase()}`);
-    // The spotId from betResults might differ from the actual DOM spotId
-    // We need to reconstruct it from the bet data
-    // Actually, we can use the chips that are already on the board
-  });
-
   // Get all chips on this card's betting container
   const bettingContainer = document.getElementById(`betting-container-${cardNumber}`);
-  if (!bettingContainer) return;
+  if (!bettingContainer) {
+    console.warn(`[showCardBetResults] Betting container not found for card ${cardNumber}`);
+    return;
+  }
 
   const allChips = bettingContainer.querySelectorAll('.chip');
-  
-  // Create a map of spotId -> net result for quick lookup
-  const spotNetMap = {};
-  cardBets.forEach(bet => {
-    // Reconstruct the spotId pattern from the bet
-    // The server sends betDescr like "Suit ♦" or "Suits ♦♥" or "Odd" etc.
-    // We need to match this to the actual spotId on the DOM
-    
-    // Find the chip by matching user and checking which spot it's in
-    allChips.forEach(chip => {
-      if (chip.dataset.userId === bet.userId) {
-        const chipSpotId = chip.dataset.spotId;
-        // Check if this chip's spotId matches the bet's card number
-        if (chipSpotId && chipSpotId.startsWith(`card${cardNumber}-`)) {
-          if (!spotNetMap[chipSpotId]) {
-            spotNetMap[chipSpotId] = {};
-          }
-          if (!spotNetMap[chipSpotId][bet.userId]) {
-            spotNetMap[chipSpotId][bet.userId] = 0;
-          }
-          // We need to match the bet to the chip more precisely
-          // For now, let's use a different approach - iterate through cardBets and find matching chips
-        }
-      }
-    });
-  });
-
-  // Better approach: iterate through all chips for this card and determine win/lose
-  // We have the betResults which tell us net for each bet
-  // Each betResult has: userId, cardNumber, betDescr, wager, net
+  console.log(`[showCardBetResults] Found ${allChips.length} chips on card ${cardNumber}`);
   
   // Helper to convert suit name to symbol
   function suitNameToSymbol(name) {
@@ -535,6 +521,7 @@ async function showCardBetResults(cardNumber, allBetResults) {
   }
   
   // Create a lookup by constructing expected spotIds from betDescr
+  // We need to handle that the suits order in spotId might differ from betDescr
   const betLookup = {};
   cardBets.forEach(bet => {
     // Convert betDescr to spotId format
@@ -545,6 +532,7 @@ async function showCardBetResults(cardNumber, allBetResults) {
     
     if (descr.includes(' or ')) {
       // Double suit bet like "Hearts or Clubs"
+      // The order in the server description matches the spotId order
       const suits = descr.split(' or ').map(s => suitNameToSymbol(s.trim()));
       spotId += 'suits-' + suits.join('');
     } else if (['diamonds', 'hearts', 'spades', 'clubs'].includes(descr)) {
@@ -570,6 +558,7 @@ async function showCardBetResults(cardNumber, allBetResults) {
     }
     
     const key = `${bet.userId}:${spotId}`;
+    console.log(`[showCardBetResults] Creating lookup key: ${key} for bet:`, bet.betDescr);
     if (!betLookup[key]) {
       betLookup[key] = { net: 0, wager: 0 };
     }
@@ -589,12 +578,15 @@ async function showCardBetResults(cardNumber, allBetResults) {
     }
     
     const lookupKey = `${chipUserId}:${chipSpotId}`;
+    console.log(`[showCardBetResults] Looking up chip with key: ${lookupKey}`);
     const result = betLookup[lookupKey];
     
     if (!result) {
-      // No result for this chip (shouldn't happen normally)
+      console.warn(`[showCardBetResults] No result found for chip key: ${lookupKey}`);
       return;
     }
+    
+    console.log(`[showCardBetResults] Found result for chip:`, result);
     
     const spotEl = chip.parentElement;
     
@@ -632,8 +624,10 @@ async function showCardBetResults(cardNumber, allBetResults) {
     animationPromises.push(animPromise);
   });
 
-  // Wait for all animations to complete
-  await Promise.all(animationPromises);
+  // Wait for all animations to complete (or at least give some time for visual effect)
+  if (animationPromises.length > 0) {
+    await Promise.all(animationPromises);
+  }
   
   // Small extra delay for visual clarity
   await delay(300);
@@ -650,8 +644,9 @@ async function checkAndTriggerCardLongshot(cardNumber, longShotWins) {
     return;
   }
   
-  // Filter for longshots on this specific card
-  const cardLongshots = longShotWins.filter(ls => ls.cardNumber === cardNumber);
+  // Filter for longshots on this specific card (handle both string and number)
+  const cardNumInt = parseInt(cardNumber, 10);
+  const cardLongshots = longShotWins.filter(ls => parseInt(ls.cardNumber, 10) === cardNumInt);
   
   if (cardLongshots.length > 0) {
     console.log(`[checkAndTriggerCardLongshot] Card ${cardNumber} has longshot wins:`, cardLongshots);
@@ -1262,6 +1257,8 @@ function rebuildUIFromState(gameState, currentUserId, isDealer) {
         existingChip.textContent = newAmount;
       } else {
         const chipEl = createChipElement(userId, amount, spotId);
+        // Mark as settled immediately during rebuild - no animation needed
+        chipEl.classList.add('chip-settled');
         targetEl.appendChild(chipEl);
       }
 
@@ -1570,14 +1567,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ===== CARD 1 =====
     console.log('[cardsDealt] Revealing Card 1');
-    revealCard(cardSlot1, dealData.card1, 'Card 1');
     stealAudio.play().catch(err => {
       console.warn('Audio play failed for steal.mp3:', err);
     });
     if (titleSteal) titleSteal.classList.add('highlight');
     
-    // Wait for flip animation
-    await delay(800);
+    // Wait for card to start flipping, then wait for flip animation to complete
+    await revealCard(cardSlot1, dealData.card1, 'Card 1');
+    await delay(800); // Wait for flip animation (0.8s CSS transition)
     
     // Show bet results for card 1 (if we have them)
     let betResults = betResultsCache || await waitForBetResults();
@@ -1595,13 +1592,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ===== CARD 2 =====
     console.log('[cardsDealt] Revealing Card 2');
-    revealCard(cardSlot2, dealData.card2, 'Card 2');
     ryansAudio.play().catch(err => {
       console.warn('Audio play failed for ryans.mp3:', err);
     });
     if (titleRyans) titleRyans.classList.add('highlight');
     
-    // Wait for flip animation
+    // Wait for card to start flipping, then wait for flip animation to complete
+    await revealCard(cardSlot2, dealData.card2, 'Card 2');
     await delay(800);
     
     // Show bet results for card 2
@@ -1620,14 +1617,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ===== CARD 3 =====
     console.log('[cardsDealt] Revealing Card 3');
-    revealCard(cardSlot3, dealData.card3, 'Card 3');
     moneyAudio.play().catch(err => {
       console.warn('Audio play failed for money.mp3:', err);
     });
     if (titleMoney) titleMoney.classList.add('highlight');
     finishedDealing = true;
     
-    // Wait for flip animation
+    // Wait for card to start flipping, then wait for flip animation to complete
+    await revealCard(cardSlot3, dealData.card3, 'Card 3');
     await delay(800);
     
     // Show bet results for card 3
