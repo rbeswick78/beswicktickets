@@ -292,6 +292,9 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
+  <!-- Pure optimistic-bet reconciler (Phase 4). Classic script so it sets window.SrmBet before the
+       deferred module below runs; also require()d by the node:test suite. -->
+  <script src="/js/srmBetReconciler.js"></script>
   <script type="module" src="/js/srmGameBoard.js"></script>
 </body>
 </html>

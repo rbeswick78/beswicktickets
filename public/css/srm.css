@@ -217,6 +217,8 @@ h1, h2, h3, .srm-title {
   border-radius: 0.8em;
   box-shadow: inset 0 0 2em rgba(0,0,0,0.5);
   touch-action: manipulation;
+  /* Phase 4.3: suppress iOS's grey tap flash; we paint our own .spot-press feedback instead. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 .betting-container > div {
@@ -228,9 +230,10 @@ h1, h2, h3, .srm-title {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s, box-shadow 0.2s;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.08s ease, filter 0.08s ease;
   color: var(--gold-accent);
   font-weight: bold;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Grid Areas Mapping */
@@ -255,6 +258,14 @@ h1, h2, h3, .srm-title {
   background: radial-gradient(ellipse at center, #a00000 50%, #500000 100%);
   box-shadow: 0 0 1em var(--gold-accent);
   border-color: var(--gold-accent);
+}
+
+/* Per-tap acknowledgement (Phase 4.3): a brief scale + brighten on the tapped spot, fired on
+   pointerdown and independent of the network round-trip. */
+.betting-container > div.spot-press {
+  transform: scale(0.94);
+  filter: brightness(1.5);
+  box-shadow: 0 0 1.2em var(--gold-accent);
 }
 
 /* Icons & Content */
@@ -322,10 +333,18 @@ h1, h2, h3, .srm-title {
   text-shadow: 0.1em 0.1em 0.2em black;
   
   z-index: 10;
-  cursor: pointer;
-  
+  /* Phase 4.2: chips are transparent to taps so a tap on a spot is always an ADD on the spot
+     beneath; only the remove badge (below) re-enables pointer hits. */
+  pointer-events: none;
+
   animation: chipDrop 0.3s ease-out forwards;
   animation-fill-mode: forwards;
+}
+
+/* Amount label inside a chip — a dedicated child so the value can update without clobbering the
+   remove badge sibling. */
+.chip-amount {
+  pointer-events: none;
 }
 
 /* Once chip drop is complete, disable further re-animation of the drop */
@@ -337,6 +356,62 @@ h1, h2, h3, .srm-title {
 @keyframes chipDrop {
   0% { transform: scale(1.5) translateY(-2em); opacity: 0; }
   100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+/* Optimistic (unconfirmed) chip (Phase 4.1) — visually distinct from a server-confirmed chip: a
+   dashed gold ring + slight transparency. Static (no animation) so it survives .chip-settled's
+   animation:none and never fights the chipDrop entrance. */
+.chip.chip-unconfirmed {
+  opacity: 0.72;
+}
+
+.chip.chip-unconfirmed::after {
+  content: '';
+  position: absolute;
+  inset: -0.18em;
+  border-radius: 50%;
+  border: 0.15em dashed rgba(212, 175, 55, 0.9);
+  pointer-events: none;
+}
+
+/* Remove affordance: a corner "−" badge on the current user's chip (Phase 4.2). The chip is
+   pointer-events:none; this badge re-enables hits so removal is an explicit, deliberate action and
+   an add can never silently become a remove. */
+.chip-remove-badge {
+  position: absolute;
+  top: -0.35em;
+  right: -0.35em;
+  width: 1.35em;
+  height: 1.35em;
+  padding: 0;
+  border-radius: 50%;
+  border: 0.12em solid rgba(255, 255, 255, 0.9);
+  background: #b91c1c;
+  color: #fff;
+  font-size: 0.9em;
+  font-weight: bold;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 30;
+  box-shadow: 0 0.1em 0.2em rgba(0, 0, 0, 0.4);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.chip-remove-badge:active {
+  transform: scale(0.88);
+}
+
+/* Hide the remove affordance once a round is being resolved (the chip is locked into a result). */
+.chip.winning .chip-remove-badge,
+.chip.losing .chip-remove-badge,
+.chip.pending .chip-remove-badge,
+.chip.push .chip-remove-badge {
+  display: none;
 }
 
 /* =========================================

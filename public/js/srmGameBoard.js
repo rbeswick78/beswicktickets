@@ -45,7 +45,21 @@ const TIMING = {
   BATCH_MS: 200,
   CHIP_SETTLE_MS: 350,
   CARD_FLIP_MS: 800,
+  ACK_TIMEOUT_MS: 4000, // how long to wait for a bet ack before rolling the optimistic chip back
 };
+
+// A pointer that moves more than this (px) before lift is treated as a scroll, not a tap, so the
+// optimistic chip placed on pointerdown is rolled back (Phase 4.2). The board is taller than the
+// viewport on mobile, so a vertical pan must never leave a stray bet behind.
+const MOVE_CANCEL_PX = 12;
+
+// Phase 4 optimistic-bet state. The reconciler (pure, unit-tested in test/srmBetReconciler.test.js)
+// owns the current user's per-spot { confirmed, pending } and tells us what amount to render; the
+// DOM glue below renders it. `lastAppliedRev` drives gap detection so a missed broadcast triggers a
+// full resync. Loaded as a classic <script> before this module, so window.SrmBet is ready.
+const { createBetReconciler, nextRevState, aggregateBatch } = window.SrmBet;
+const reconciler = createBetReconciler();
+let lastAppliedRev = null;
 
 // Single source of truth: resolve a spotId to its bet-spot CSS class.
 const SPOT_CLASS_RULES = [
@@ -216,24 +230,47 @@ function animateCountUp(startValue, endValue, ledDisplay, ledContainer) {
 }
 
 /**
- * Flash the LED for bet placement (instant decrement)
+ * Flash the LED for bet placement (instant, optimistic decrement). This is a *transient* feel-good
+ * flash only (Phase 4.5): the authoritative balance is reconciled to the server's value on every
+ * bet ack and ticketUpdate, and restored from it on a rejection. `actualBalance` (server truth) is
+ * never touched here, so a wrong optimistic decrement is always recoverable.
  * @param {number} betAmount - Amount being bet
  */
 function flashBetPlaced(betAmount) {
   const ledContainer = document.querySelector('.balance-led');
   const ledDisplay = document.getElementById('my-balance-amount');
-  
+
   if (!ledDisplay || !ledContainer) return;
-  
+
   // Instantly decrement displayed balance
   displayedBalance = Math.max(0, displayedBalance - betAmount);
   ledDisplay.textContent = displayedBalance.toLocaleString();
-  
+
   // Add red flash class
   ledContainer.classList.add('bet-placed');
   setTimeout(() => {
     ledContainer.classList.remove('bet-placed');
   }, 300);
+}
+
+/**
+ * Reverse a single optimistic flashBetPlaced decrement (used when a tap is reclassified as a scroll
+ * and undone before it is sent). Re-adds the amount to the displayed balance only.
+ */
+function unflashBet(betAmount) {
+  const ledDisplay = document.getElementById('my-balance-amount');
+  displayedBalance += betAmount;
+  if (ledDisplay) ledDisplay.textContent = displayedBalance.toLocaleString();
+}
+
+/**
+ * Snap the LED back to the authoritative server balance (Phase 4.5). Called on a bet rejection so
+ * an optimistic decrement that the server refused is undone immediately.
+ */
+function restoreLedBalance() {
+  const ledDisplay = document.getElementById('my-balance-amount');
+  displayedBalance = actualBalance;
+  if (ledDisplay) ledDisplay.textContent = actualBalance.toLocaleString();
 }
 
 /**
@@ -254,64 +291,133 @@ function makeBatchId() {
 }
 
 function sendPendingBets() {
+  batchTimer = null;
   if (pendingBets.length === 0) return;
 
-  // Aggregate locally to reduce payload size
-  const aggregated = {};
-  pendingBets.forEach(pb => {
-    if (!aggregated[pb.spotId]) aggregated[pb.spotId] = 0;
-    aggregated[pb.spotId] += pb.amount;
-  });
-
-  const finalBets = Object.keys(aggregated).map(spotId => ({
-    spotId,
-    amount: aggregated[spotId]
-  }));
+  // Aggregate the queued taps into one net delta per spot (zero-net spots dropped). `batchDeltas`
+  // is the exact per-spot deltas this batch carries, used to reconcile its pending on ack (Phase
+  // 4.1) — we reconcile by the deltas we SENT, not the server's confirmed delta, so an optimistic
+  // removal the server ignored is still cleared (see srmBetReconciler.js).
+  const taps = pendingBets;
+  pendingBets = [];
+  const { finalBets, deltas: batchDeltas } = aggregateBatch(taps);
 
   // Ensure we have gameId/userId from window (set in DOMContentLoaded)
   const gId = window.gameId;
   const uId = window.currentUserId;
 
-  if (finalBets.length > 0 && gId && uId) {
-    socket.emit(
-      'playerBetBatch',
-      {
-        gameId: gId,
-        userId: uId,
-        bets: finalBets,
-        clientBatchId: makeBatchId(),
-      },
-      // Ack (Phase 3.4): the server answers {ok, bets:[{spotId,total}], balance, rev} or
-      // {ok:false, reason}. Chips/balance already reconcile from the room broadcast and the
-      // absolute totals; the ack is the seam Phase 4 builds optimistic UI + retry on.
-      (ack) => {
-        if (ack && ack.ok === false) {
-          dbg('[playerBetBatch] rejected:', ack.reason);
-        }
-      }
-    );
-  }
+  if (finalBets.length === 0 || !gId || !uId) return;
 
-  pendingBets = [];
-  batchTimer = null;
+  const batchGeneration = reconciler.getGeneration();
+
+  let settled = false;
+  let timeoutId = null;
+  const finish = () => { settled = true; if (timeoutId) clearTimeout(timeoutId); };
+
+  // Success: subtract this batch's deltas from pending and SET confirmed from the absolute totals,
+  // then reconcile the LED to the server balance. A resync (generation bump) that landed while we
+  // waited makes this ack stale — discard it; the resync already pulled absolute truth.
+  const onSuccess = (ack) => {
+    if (settled) return;
+    finish();
+    if (batchGeneration !== reconciler.getGeneration()) return;
+    const affected = reconciler.confirm(batchDeltas, Array.isArray(ack.bets) ? ack.bets : []);
+    affected.forEach(renderMyChip);
+    if (typeof ack.balance === 'number') updateLedBalance(ack.balance, false);
+  };
+
+  // Failure / timeout: roll the optimistic deltas back (confirmed untouched) and restore the LED.
+  // A {ok:false} rejection also raises a betError, which drives the toast + full resync; a silent
+  // timeout has no betError, so we resync here to re-pull absolute truth.
+  const onFailure = (isTimeout) => {
+    if (settled) return;
+    finish();
+    if (batchGeneration !== reconciler.getGeneration()) return;
+    const affected = reconciler.rollback(batchDeltas);
+    affected.forEach(renderMyChip);
+    restoreLedBalance();
+    if (isTimeout) {
+      showToast('Bet timed out — resyncing.', 'error');
+      resyncGameData();
+    }
+  };
+
+  timeoutId = setTimeout(() => onFailure(true), TIMING.ACK_TIMEOUT_MS);
+
+  socket.emit(
+    'playerBetBatch',
+    { gameId: gId, userId: uId, bets: finalBets, clientBatchId: makeBatchId() },
+    // Ack (Phase 3.4): {ok, bets:[{spotId,total}], balance, rev} or {ok:false, reason}.
+    (ack) => {
+      if (ack && ack.ok) onSuccess(ack);
+      else onFailure(false);
+    }
+  );
 }
 
+// Queue a bet delta for the next 200 ms batch. Optimistic rendering + the LED flash happen in
+// applyOptimisticTap; this only manages the network batch (Phase 4.1 decouples feel from this
+// debounce + round-trip). For gesture taps, queueBet is called on pointerup once the press is
+// confirmed a tap (not a scroll); the remove badge / click fallback call it via placeBet.
 function queueBet(spotId, amount) {
   pendingBets.push({ spotId, amount });
-  
-  // Flash LED for bet placement (only for positive bets, i.e., placing, not removing)
-  if (amount > 0) {
-    flashBetPlaced(amount);
-  }
-  
   if (!batchTimer) {
     batchTimer = setTimeout(sendPendingBets, TIMING.BATCH_MS);
   }
 }
 
+/**
+ * Render an optimistic tap immediately (Phase 4.1): bump the reconciler's pending, draw the chip as
+ * "unconfirmed", and flash the LED. This is the INSTANT half — it does NOT send anything. The
+ * network commit is deferred to queueBet so a gesture that turns into a scroll can be reverted
+ * before anything reaches the server (Phase 4.2). `amount` is positive to add, negative to remove.
+ */
+function applyOptimisticTap(spotId, amount) {
+  reconciler.tap(spotId, amount);
+  renderMyChip(spotId);
+  if (amount > 0) flashBetPlaced(amount);
+}
+
+/** Reverse an optimistic tap that was never committed (a tap reclassified as a scroll). */
+function revertOptimisticTap(spotId, amount) {
+  reconciler.tap(spotId, -amount);
+  renderMyChip(spotId);
+  if (amount > 0) unflashBet(amount);
+}
+
+/**
+ * Place a bet immediately — render optimistically AND queue the network batch in one step. Used for
+ * discrete, deliberate actions that aren't part of a press-and-maybe-scroll gesture: the chip remove
+ * badge and the no-PointerEvent click fallback.
+ */
+function placeBet(spotId, amount) {
+  if (currentRoundStatus !== 'betting') return;
+  applyOptimisticTap(spotId, amount);
+  queueBet(spotId, amount);
+}
+
+/** Ask the server for the authoritative game state; the gameData handler rebuilds from it. */
+function resyncGameData() {
+  const gId = window.gameId;
+  if (gId) socket.emit('requestGameData', { gameId: gId });
+}
+
+// Track an incoming rev; on a detected gap (a missed broadcast) pull a full resync (Phase 4.4).
+function noteRevWithGap(rev) {
+  const res = nextRevState(lastAppliedRev, rev);
+  lastAppliedRev = res.lastRev;
+  if (res.gap) resyncGameData();
+}
+
+// Reset the rev baseline from an authoritative full-state message (gameData / roundCleared).
+function resetRev(rev) {
+  if (typeof rev === 'number') lastAppliedRev = rev;
+}
+
 // Set a spot's chip to the server's ABSOLUTE per-user total (Phase 3.1). Because the server
 // echoes the new total (not a delta), the client SETS rather than adds — so a lost, duplicated,
 // or reordered frame is self-correcting. total <= 0 means the user has no stake left here.
+// Used for OTHER players' chips; the current user's chip goes through renderMyChip (optimistic).
 function setChipUI(userId, spotId, total) {
   const targetEl = getBetSpotElement(spotId);
 
@@ -320,8 +426,7 @@ function setChipUI(userId, spotId, total) {
   if (total <= 0) {
     if (existingChip) existingChip.remove();
   } else if (existingChip) {
-    existingChip.dataset.amount = total;
-    existingChip.textContent = total;
+    setChipAmount(existingChip, total);
   } else {
     const chipEl = createChipElement(userId, total, spotId);
     targetEl.appendChild(chipEl);
@@ -330,30 +435,91 @@ function setChipUI(userId, spotId, total) {
 }
 
 /**
- * Create a chip element, including the click-to-remove logic for the current user only
+ * Render the CURRENT USER's chip on a spot from the reconciler's absolute display amount (Phase
+ * 4.1). Adds the `.chip-unconfirmed` class while the spot carries an unreconciled optimistic delta.
+ * @param {string} spotId
+ * @param {boolean} [settled] - skip the drop-in animation (used during a full rebuild)
+ */
+function renderMyChip(spotId, settled) {
+  const targetEl = getBetSpotElement(spotId);
+  if (!targetEl) return;
+  const total = reconciler.displayAmount(spotId);
+  const existingChip = targetEl.querySelector(`.chip[data-user-id="${currentUserId}"]`);
+
+  if (total <= 0) {
+    if (existingChip) existingChip.remove();
+    positionChips(targetEl);
+    return;
+  }
+
+  let chipEl = existingChip;
+  if (!chipEl) {
+    chipEl = createChipElement(currentUserId, total, spotId);
+    targetEl.appendChild(chipEl);
+  } else {
+    setChipAmount(chipEl, total);
+  }
+  chipEl.classList.toggle('chip-unconfirmed', reconciler.isPending(spotId));
+  if (settled) chipEl.classList.add('chip-settled');
+  positionChips(targetEl);
+}
+
+/**
+ * Set a chip's displayed amount via a dedicated `.chip-amount` child (created on first use) so the
+ * value can be updated without clobbering sibling elements such as the remove badge.
+ */
+function setChipAmount(chipEl, amount) {
+  chipEl.dataset.amount = amount;
+  let amtEl = chipEl.querySelector('.chip-amount');
+  if (!amtEl) {
+    amtEl = document.createElement('span');
+    amtEl.className = 'chip-amount';
+    chipEl.insertBefore(amtEl, chipEl.firstChild);
+  }
+  amtEl.textContent = amount;
+}
+
+/**
+ * Attach an explicit remove affordance (corner "−" badge) to the current user's chip (Phase 4.2).
+ * The chip itself is `pointer-events:none` so a tap on it falls through to the spot (an ADD); only
+ * this badge re-enables pointer events, so an add can never silently become a remove. The badge
+ * fires on pointerdown and stops propagation so the underlying spot does not also register an add.
+ */
+function addRemoveBadge(chipEl, spotId) {
+  const badge = document.createElement('button');
+  badge.type = 'button';
+  badge.className = 'chip-remove-badge';
+  badge.setAttribute('aria-label', 'Remove a chip from this spot');
+  badge.textContent = '−';
+  const onRemove = (evt) => {
+    evt.preventDefault();
+    evt.stopPropagation();
+    placeBet(spotId, -selectedBetAmount);
+  };
+  if (window.PointerEvent) badge.addEventListener('pointerdown', onRemove);
+  else badge.addEventListener('click', onRemove);
+  chipEl.appendChild(badge);
+}
+
+/**
+ * Create a chip element. The amount lives in a `.chip-amount` child; the current user's chip also
+ * gets a remove badge. Removal is the badge's job only (Phase 4.2) — the chip body no longer
+ * carries a click-to-remove listener, so a tap on a chip is always an add on the spot beneath it.
  */
 function createChipElement(userId, amount, spotId) {
   const chipEl = document.createElement('div');
   chipEl.classList.add('chip');
   chipEl.dataset.userId = userId;
-  chipEl.dataset.amount = amount;
   chipEl.dataset.spotId = spotId;
   chipEl.style.color = getUserColor(userId); // Use currentColor in CSS
-  chipEl.textContent = amount;
+  setChipAmount(chipEl, amount);
 
   // Mark chip as settled after drop animation completes to prevent re-animation
   setTimeout(() => {
     chipEl.classList.add('chip-settled');
   }, TIMING.CHIP_SETTLE_MS); // matches srm.css chipDrop (0.3s)
 
-  // Only allow removal if this chip belongs to the current user
-  if (userId === currentUserId) {
-    chipEl.addEventListener('click', (evt) => {
-      evt.stopPropagation();
-      // Use batch queue for removal (negative selected chip amount)
-      queueBet(spotId, -selectedBetAmount);
-    });
-  }
+  if (userId === currentUserId) addRemoveBadge(chipEl, spotId);
   return chipEl;
 }
 
@@ -1038,42 +1204,44 @@ function cleanupCelebration() {
  * Rebuild UI from server state without revealing cards instantly if resultsPending
  */
 function rebuildUIFromState(gameState, currentUserId, isDealer) {
-  const { roundStatus, dealtCards, bets } = gameState;
+  const { roundStatus, bets } = gameState;
 
   // 1) Clear existing chips
   document.querySelectorAll('.chip').forEach(chip => chip.remove());
 
-  // 2) We avoid automatically revealing all three cards if roundStatus === 'resultsPending'.
+  // 2) Reset the optimistic state to absolute server truth. resyncFrom seeds the current user's
+  //    confirmed stakes, drops any unreconciled pending, and bumps the generation so an in-flight
+  //    batch ack from before this resync is discarded rather than applied against the new baseline.
+  //    Taps queued but not yet sent are dropped too — the server view we just pulled is canonical.
+  const myConfirmed = (bets || [])
+    .filter((b) => String(b.userId) === String(currentUserId))
+    .map((b) => ({ spotId: b.spotId, total: b.amount }));
+  reconciler.resyncFrom(myConfirmed);
+  pendingBets = [];
+  if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
+
+  // 3) We avoid automatically revealing all three cards if roundStatus === 'resultsPending'.
   //    Instead, rely on timed reveal in socket.on('cardsDealt').
 
-  // 3) Render current bets as chips
+  // 4) Render current bets as chips. Each game.bets entry is the ABSOLUTE per-(user,spot) stake, so
+  //    we SET (the current user via the reconciler, others directly) — never accumulate.
   if (bets && bets.length > 0) {
     bets.forEach((bet) => {
       const { userId, spotId, amount } = bet;
-      const targetEl = getBetSpotElement(spotId);
-
-      if (!targetEl) return;
-
-      // Either update existing chip or create a new one
-      const existingChip = targetEl.querySelector(`.chip[data-user-id="${userId}"]`);
-      if (existingChip) {
-        const currentAmount = parseInt(existingChip.dataset.amount || '0', 10);
-        const newAmount = currentAmount + amount;
-        existingChip.dataset.amount = newAmount;
-        existingChip.textContent = newAmount;
-      } else {
-        const chipEl = createChipElement(userId, amount, spotId);
-        // Mark as settled immediately during rebuild - no animation needed
-        chipEl.classList.add('chip-settled');
-        targetEl.appendChild(chipEl);
+      if (String(userId) === String(currentUserId)) {
+        renderMyChip(spotId, true); // settled: no drop-in animation on rebuild
+        return;
       }
-
-      // Reposition chips
+      const targetEl = getBetSpotElement(spotId);
+      if (!targetEl) return;
+      const chipEl = createChipElement(userId, amount, spotId);
+      chipEl.classList.add('chip-settled'); // settled immediately during rebuild
+      targetEl.appendChild(chipEl);
       positionChips(targetEl);
     });
   }
 
-  // 4) If roundStatus is 'results' or 'resultsPending' and this user is dealer, show 'Clear'.
+  // 5) If roundStatus is 'results' or 'resultsPending' and this user is dealer, show 'Clear'.
   //    But don't override if currently in "dealing" animation state
   if ((roundStatus === 'results' || roundStatus === 'resultsPending') && isDealer) {
     const dealButton = document.getElementById('deal-button');
@@ -1302,10 +1470,27 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
     
-    // Don't rebuild UI during dealing phase - it would wipe out winning/losing chip effects
+    // gameData is the authoritative full-state snapshot — reset the rev baseline from it (Phase
+    // 4.4) so subsequent betPlacedBatch echoes are gap-checked against a known-good revision.
+    resetRev(data.rev);
+
+    // Don't rebuild UI during dealing phase - it would wipe out winning/losing chip effects.
+    // Outside dealing, also sync the local betting gate so a player who loaded/resynced mid-results
+    // can't place optimistic bets the server would only reject.
     if (!isDealingPhase) {
+      if (typeof data.roundStatus === 'string') currentRoundStatus = data.roundStatus;
       rebuildUIFromState(data, currentUserId, isDealer);
     }
+  });
+
+  // Reconnect resync (Phase 4.4): a dropped-then-restored socket is a fresh connection that is no
+  // longer in the game room, so re-join and pull absolute truth. rebuildUIFromState (via gameData)
+  // is idempotent and resets the optimistic state, so any bets lost across the gap self-heal.
+  socket.on('connect', () => {
+    const gId = window.gameId;
+    if (!gId) return;
+    socket.emit('joinGameRoom', { gameId: gId, userId: window.currentUserId });
+    socket.emit('requestGameData', { gameId: gId });
   });
 
   // Listen for colorAssignment
@@ -1492,26 +1677,98 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
 
-  // Place bets
+  // Place bets. On pointerdown the chip renders optimistically at once (the felt-responsiveness fix)
+  // but the network commit is DEFERRED to pointerup (Phase 4.2): a press that then moves past
+  // MOVE_CANCEL_PX, or that the browser reclassifies via pointercancel, is a scroll — its optimistic
+  // chip is reverted and nothing is ever sent, so a pan on the taller-than-viewport mobile felt can
+  // never leave a stray, charged bet. Deferring the send (not the render) is what closes the race
+  // the 200 ms batch timer would otherwise win. Multiple concurrent pointers are tracked by id so a
+  // two-thumb rapid tapper has every tap register. Falls back to click where PointerEvent is absent.
   const bettableAreas = document.querySelectorAll(
     '.suit-quad, .border-bet, .odd-even-bet, .joker-bet, .ace-bet, .lowest-bet, .middle-bet, .highest-bet'
   );
-  bettableAreas.forEach((area) => {
-    area.addEventListener('click', () => {
-      if (currentRoundStatus !== 'betting') return;
-      const spotId = area.getAttribute('data-spot-id');
-      // Use batch queue with selected chip amount
-      queueBet(spotId, selectedBetAmount);
-    });
-  });
 
-  // Listen for betPlacedBatch — each entry is an ABSOLUTE per-spot total (Phase 3.1), so we SET.
-  socket.on('betPlacedBatch', (data) => {
-    if (data.bets && Array.isArray(data.bets)) {
-      data.bets.forEach(bet => {
-        setChipUI(bet.userId, bet.spotId, bet.total);
+  // pointerId -> { spotId, x, y, amount } for gestures whose tap-vs-scroll is not yet resolved.
+  const activePointers = new Map();
+
+  function pressFeedback(area) {
+    area.classList.add('spot-press'); // Phase 4.3: brief, network-independent tap acknowledgement
+    setTimeout(() => area.classList.remove('spot-press'), 150);
+  }
+
+  function beginPlacement(area, e) {
+    if (currentRoundStatus !== 'betting') return;
+    const spotId = area.getAttribute('data-spot-id');
+    if (!spotId) return;
+    pressFeedback(area);
+    activePointers.set(e.pointerId, { spotId, x: e.clientX, y: e.clientY, amount: selectedBetAmount });
+    applyOptimisticTap(spotId, selectedBetAmount); // render now; the network send waits for pointerup
+  }
+
+  bettableAreas.forEach((area) => {
+    if (window.PointerEvent) {
+      area.addEventListener('pointerdown', (e) => beginPlacement(area, e));
+    } else {
+      area.addEventListener('click', () => {
+        if (currentRoundStatus !== 'betting') return;
+        const spotId = area.getAttribute('data-spot-id');
+        if (spotId) placeBet(spotId, selectedBetAmount);
       });
     }
+  });
+
+  if (window.PointerEvent) {
+    // Document-level so a pan that drifts off the original spot is still caught. Passive: we never
+    // preventDefault here — that would block the page from scrolling.
+    document.addEventListener('pointermove', (e) => {
+      const p = activePointers.get(e.pointerId);
+      if (!p) return;
+      const dx = e.clientX - p.x;
+      const dy = e.clientY - p.y;
+      if (dx * dx + dy * dy > MOVE_CANCEL_PX * MOVE_CANCEL_PX) {
+        activePointers.delete(e.pointerId);
+        revertOptimisticTap(p.spotId, p.amount); // scroll: undo the optimistic chip; nothing was sent
+      }
+    }, { passive: true });
+    document.addEventListener('pointerup', (e) => {
+      const p = activePointers.get(e.pointerId);
+      if (!p) return;
+      activePointers.delete(e.pointerId);
+      queueBet(p.spotId, p.amount); // confirmed a tap → commit the network batch
+    });
+    document.addEventListener('pointercancel', (e) => {
+      const p = activePointers.get(e.pointerId);
+      if (!p) return;
+      activePointers.delete(e.pointerId);
+      revertOptimisticTap(p.spotId, p.amount); // browser took over (scroll/system) → undo
+    });
+  }
+
+  // Listen for betPlacedBatch — each entry is an ABSOLUTE per-spot total (Phase 3.1), so we SET.
+  // The current user's own entries feed the reconciler's `confirmed` (the ack always arrives first
+  // on the same connection and has already cleared the matching pending, so this is idempotent);
+  // other players' entries set their chips directly. The batch's rev drives gap detection.
+  socket.on('betPlacedBatch', (data) => {
+    if (!data) return;
+    // A duplicate-clientBatchId replay re-emits an OLD confirmation (older absolute totals AND an
+    // older rev). Don't let such a stale frame lower our own confirmed below the truth a newer
+    // batch already set — the rev guard would then suppress the heal. The generation-guarded ack is
+    // authoritative for our stake; fresh echoes (rev > lastAppliedRev) still apply normally.
+    const staleForMe =
+      typeof data.rev === 'number' && lastAppliedRev != null && data.rev <= lastAppliedRev;
+    if (Array.isArray(data.bets)) {
+      data.bets.forEach(bet => {
+        if (String(bet.userId) === String(currentUserId)) {
+          if (!staleForMe) {
+            reconciler.setConfirmed(bet.spotId, bet.total);
+            renderMyChip(bet.spotId);
+          }
+        } else {
+          setChipUI(bet.userId, bet.spotId, bet.total);
+        }
+      });
+    }
+    noteRevWithGap(data.rev);
   });
 
   // Deal or Clear
@@ -1533,14 +1790,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // roundCleared => UI reset
-  socket.on('roundCleared', () => {
+  socket.on('roundCleared', (data) => {
     // Clear all bet result animations and badges first
     clearBetResultAnimations();
-    
+
     // Remove all chips
     document.querySelectorAll('.chip').forEach(chip => chip.remove());
-    
-    
+
+    // Reset the optimistic bet state to empty (the round cleared every bet), drop any queued/
+    // in-flight taps, and re-baseline rev from the cleared revision (Phase 4.4).
+    reconciler.resyncFrom([]);
+    pendingBets = [];
+    if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
+    resetRev(data && data.rev);
+
     // Hide summary panels
     hideSummaryPanels();
 
@@ -1581,9 +1844,14 @@ document.addEventListener('DOMContentLoaded', () => {
     cleanupCelebration();
   });
 
-  // betError => show a popup
+  // betError => toast + restore the optimistic LED to server truth (Phase 4.4/4.5). We deliberately
+  // DON'T pull a full resync here: every bet rejection also fires the ack {ok:false}, whose handler
+  // already did the precise per-batch rollback, and a betError with no ack (a dealer-only-action
+  // error) doesn't touch our bets at all. A full requestGameData -> rebuildUIFromState would wipe
+  // and redraw EVERY chip on the board on a routine insufficient-funds over-tap (a jarring flicker)
+  // for no convergence benefit. True desync is covered by reconnect, rev-gap, and ack-timeout.
   socket.on('betError', (data) => {
-    // Replaced alert with showToast
     showToast(data.message, 'error');
+    restoreLedBalance();
   });
 });
