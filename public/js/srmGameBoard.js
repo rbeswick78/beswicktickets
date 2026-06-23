@@ -1,13 +1,4 @@
-/**
- * Make sure the two variables (finishedDealing, payoutResultsCache) are defined
- * in a scope accessible to all the code that references them. For example, define
- * them at the top of your file (outside any function) or at least before
- * we register the "DOMContentLoaded" listener.
- */
-
 let currentRoundStatus = 'betting';
-let finishedDealing = false;    // Track if the 3rd card is shown
-let payoutResultsCache = null;  // Store results until the flips are done
 let dealtCardsCache = null;     // Store dealt cards for results display
 
 // Ticket update caching - prevent balance spoilers during card reveal
@@ -43,6 +34,33 @@ let winTickAudio = null;         // Sound for count-up ticks
  */
 const userColorMap = {};
 const socket = window.io();
+
+// Debug logging — flip DEBUG to true to enable verbose console output.
+const DEBUG = false;
+function dbg(...args) { if (DEBUG) console.log(...args); }
+
+// Animation/interaction timings (ms). CHIP_SETTLE_MS and CARD_FLIP_MS are coupled to
+// srm.css (chipDrop 0.3s and the 0.8s card flip) — keep them in sync if the CSS changes.
+const TIMING = {
+  BATCH_MS: 200,
+  CHIP_SETTLE_MS: 350,
+  CARD_FLIP_MS: 800,
+};
+
+// Single source of truth: resolve a spotId to its bet-spot CSS class.
+const SPOT_CLASS_RULES = [
+  { test: (id) => id.includes('suits-'),                       cls: 'border-bet' },
+  { test: (id) => id.includes('-odd') || id.includes('-even'), cls: 'odd-even-bet' },
+  { test: (id) => id.includes('-joker'),                       cls: 'joker-bet' },
+  { test: (id) => id.includes('-ace'),                         cls: 'ace-bet' },
+  { test: (id) => id.includes('-low'),                         cls: 'lowest-bet' },
+  { test: (id) => id.includes('-mid'),                         cls: 'middle-bet' },
+  { test: (id) => id.includes('-high'),                        cls: 'highest-bet' },
+];
+function spotClass(spotId) {
+  const rule = SPOT_CLASS_RULES.find((r) => r.test(spotId));
+  return rule ? rule.cls : 'suit-quad';
+}
 
 /**
  * Helper to retrieve assigned color
@@ -266,29 +284,12 @@ function queueBet(spotId, amount) {
   }
   
   if (!batchTimer) {
-    batchTimer = setTimeout(sendPendingBets, 200);
+    batchTimer = setTimeout(sendPendingBets, TIMING.BATCH_MS);
   }
 }
 
 function updateChipUI(userId, spotId, amount) {
-  let targetEl;
-  if (spotId.includes('suits-')) {
-    targetEl = document.querySelector(`.border-bet[data-spot-id="${spotId}"]`);
-  } else if (spotId.includes('-odd') || spotId.includes('-even')) {
-    targetEl = document.querySelector(`.odd-even-bet[data-spot-id="${spotId}"]`);
-  } else if (spotId.includes('-joker')) {
-    targetEl = document.querySelector(`.joker-bet[data-spot-id="${spotId}"]`);
-  } else if (spotId.includes('-ace')) {
-    targetEl = document.querySelector(`.ace-bet[data-spot-id="${spotId}"]`);
-  } else if (spotId.includes('-low')) {
-    targetEl = document.querySelector(`.lowest-bet[data-spot-id="${spotId}"]`);
-  } else if (spotId.includes('-mid')) {
-    targetEl = document.querySelector(`.middle-bet[data-spot-id="${spotId}"]`);
-  } else if (spotId.includes('-high')) {
-    targetEl = document.querySelector(`.highest-bet[data-spot-id="${spotId}"]`);
-  } else {
-    targetEl = document.querySelector(`.suit-quad[data-spot-id="${spotId}"]`);
-  }
+  const targetEl = getBetSpotElement(spotId);
 
   if (!targetEl) return;
   const existingChip = targetEl.querySelector(`.chip[data-user-id="${userId}"]`);
@@ -325,7 +326,7 @@ function createChipElement(userId, amount, spotId) {
   // Mark chip as settled after drop animation completes to prevent re-animation
   setTimeout(() => {
     chipEl.classList.add('chip-settled');
-  }, 350); // Slightly longer than the 0.3s animation
+  }, TIMING.CHIP_SETTLE_MS); // matches srm.css chipDrop (0.3s)
 
   // Only allow removal if this chip belongs to the current user
   if (userId === currentUserId) {
@@ -379,7 +380,7 @@ function preloadAllCardImages() {
     img.src = path;
   });
   
-  console.log(`[preloadAllCardImages] Preloading ${cardPaths.length} card images`);
+  dbg(`[preloadAllCardImages] Preloading ${cardPaths.length} card images`);
 }
 
 // Preload all cards immediately when script loads
@@ -454,23 +455,7 @@ function delay(ms) {
  * Helper: Get the DOM element for a bet spot
  */
 function getBetSpotElement(spotId) {
-  if (spotId.includes('suits-')) {
-    return document.querySelector(`.border-bet[data-spot-id="${spotId}"]`);
-  } else if (spotId.includes('-odd') || spotId.includes('-even')) {
-    return document.querySelector(`.odd-even-bet[data-spot-id="${spotId}"]`);
-  } else if (spotId.includes('-joker')) {
-    return document.querySelector(`.joker-bet[data-spot-id="${spotId}"]`);
-  } else if (spotId.includes('-ace')) {
-    return document.querySelector(`.ace-bet[data-spot-id="${spotId}"]`);
-  } else if (spotId.includes('-low')) {
-    return document.querySelector(`.lowest-bet[data-spot-id="${spotId}"]`);
-  } else if (spotId.includes('-mid')) {
-    return document.querySelector(`.middle-bet[data-spot-id="${spotId}"]`);
-  } else if (spotId.includes('-high')) {
-    return document.querySelector(`.highest-bet[data-spot-id="${spotId}"]`);
-  } else {
-    return document.querySelector(`.suit-quad[data-spot-id="${spotId}"]`);
-  }
+  return document.querySelector(`.${spotClass(spotId)}[data-spot-id="${spotId}"]`);
 }
 
 /**
@@ -554,7 +539,7 @@ async function showCardBetResults(cardNumber, allBetResults) {
     }
     
     const key = `${bet.userId}:${spotId}`;
-    console.log(`[showCardBetResults] Creating lookup key: ${key} for bet:`, bet.betDescr);
+    dbg(`[showCardBetResults] Creating lookup key: ${key} for bet:`, bet.betDescr);
     if (!betLookup[key]) {
       betLookup[key] = { net: 0, wager: 0 };
     }
@@ -584,7 +569,7 @@ async function showCardBetResults(cardNumber, allBetResults) {
       // Only add pending if not already pending (for cards 1 & 2, pending was already added)
       if (!chip.classList.contains('pending')) {
         chip.classList.add('pending');
-        console.log(`[showCardBetResults] L/M/H bet set to pending for card ${cardNumber}: ${chipSpotId}`);
+        dbg(`[showCardBetResults] L/M/H bet set to pending for card ${cardNumber}: ${chipSpotId}`);
       }
       
       // Short animation promise for pending state
@@ -596,7 +581,7 @@ async function showCardBetResults(cardNumber, allBetResults) {
     }
     
     const lookupKey = `${chipUserId}:${chipSpotId}`;
-    console.log(`[showCardBetResults] Looking up chip with key: ${lookupKey}`);
+    dbg(`[showCardBetResults] Looking up chip with key: ${lookupKey}`);
     const result = betLookup[lookupKey];
     
     if (!result) {
@@ -604,7 +589,7 @@ async function showCardBetResults(cardNumber, allBetResults) {
       return;
     }
     
-    console.log(`[showCardBetResults] Found result for chip:`, result);
+    dbg(`[showCardBetResults] Found result for chip:`, result);
     
     const spotEl = chip.parentElement;
     
@@ -647,11 +632,11 @@ async function resolveLMHBets(allBetResults) {
   const pendingChips = document.querySelectorAll('.chip.pending');
   
   if (pendingChips.length === 0) {
-    console.log('[resolveLMHBets] No pending L/M/H bets to resolve');
+    dbg('[resolveLMHBets] No pending L/M/H bets to resolve');
     return;
   }
   
-  console.log(`[resolveLMHBets] Resolving ${pendingChips.length} pending L/M/H bets`);
+  dbg(`[resolveLMHBets] Resolving ${pendingChips.length} pending L/M/H bets`);
   
   // Helper to convert suit name to symbol (same as in showCardBetResults)
   function suitNameToSymbol(name) {
@@ -732,16 +717,16 @@ async function resolveLMHBets(allBetResults) {
           // WIN
           chip.classList.add('winning');
           if (spotEl) spotEl.classList.add('spot-win');
-          console.log(`[resolveLMHBets] L/M/H WIN: ${chipSpotId} net=${result.net}`);
+          dbg(`[resolveLMHBets] L/M/H WIN: ${chipSpotId} net=${result.net}`);
         } else if (result.net < 0) {
           // LOSS
           chip.classList.add('losing');
           if (spotEl) spotEl.classList.add('spot-loss');
-          console.log(`[resolveLMHBets] L/M/H LOSS: ${chipSpotId} net=${result.net}`);
+          dbg(`[resolveLMHBets] L/M/H LOSS: ${chipSpotId} net=${result.net}`);
         } else {
           // PUSH (net = 0) - tie or joker dealt
           chip.classList.add('push');
-          console.log(`[resolveLMHBets] L/M/H PUSH: ${chipSpotId} net=${result.net}`);
+          dbg(`[resolveLMHBets] L/M/H PUSH: ${chipSpotId} net=${result.net}`);
         }
         
         // Resolve after animation completes
@@ -760,7 +745,7 @@ async function resolveLMHBets(allBetResults) {
   // Extra delay for visual clarity
   await delay(300);
   
-  console.log('[resolveLMHBets] All L/M/H bets resolved');
+  dbg('[resolveLMHBets] All L/M/H bets resolved');
 }
 
 /**
@@ -779,7 +764,7 @@ async function checkAndTriggerCardLongshot(cardNumber, longShotWins) {
   const cardLongshots = longShotWins.filter(ls => parseInt(ls.cardNumber, 10) === cardNumInt);
   
   if (cardLongshots.length > 0) {
-    console.log(`[checkAndTriggerCardLongshot] Card ${cardNumber} has longshot wins:`, cardLongshots);
+    dbg(`[checkAndTriggerCardLongshot] Card ${cardNumber} has longshot wins:`, cardLongshots);
     await triggerLongShotCelebration(cardLongshots);
   }
 }
@@ -823,86 +808,59 @@ function showSummaryPanel(betResults) {
   const myData = playerTotals[currentUserId];
   const myNet = myData ? myData.totalNet : 0;
 
-  // === Update Desktop Summary Panel ===
+  // Small helpers shared by both summary panels
+  const netModifier = (n) => (n > 0 ? 'positive' : n < 0 ? 'negative' : 'neutral');
+  const signed = (n) => (n > 0 ? '+' : '') + n;
+
+  // Render standings + your-net + stats into one panel (desktop or mobile).
+  const renderSummaryInto = (cfg) => {
+    const yourNetEl = document.getElementById(cfg.yourNetId);
+    if (yourNetEl) {
+      yourNetEl.textContent = signed(myNet);
+      yourNetEl.className = cfg.yourValueClass;
+      if (myNet > 0) yourNetEl.classList.add('positive');
+      else if (myNet < 0) yourNetEl.classList.add('negative');
+    }
+
+    const standingsEl = document.getElementById(cfg.standingsId);
+    if (standingsEl) {
+      standingsEl.innerHTML = '';
+      sortedPlayers.forEach((player) => {
+        const el = document.createElement('div');
+        el.className = cfg.rowClass;
+        if (player.userId === currentUserId) el.classList.add('is-you');
+        el.innerHTML = `
+        <${cfg.tag} class="${cfg.nameClass}" style="color: ${getUserColor(player.userId)}">${player.username}</${cfg.tag}>
+        <${cfg.tag} class="${cfg.netElClass} ${netModifier(player.totalNet)}">${signed(player.totalNet)}</${cfg.tag}>
+      `;
+        standingsEl.appendChild(el);
+      });
+    }
+
+    const potEl = document.getElementById(cfg.potId);
+    if (potEl) potEl.textContent = totalPot;
+    const bestEl = document.getElementById(cfg.bestId);
+    if (bestEl) bestEl.textContent = biggestWin > 0 ? `+${biggestWin}` : '0';
+    const worstEl = document.getElementById(cfg.worstId);
+    if (worstEl) worstEl.textContent = biggestLoss < 0 ? biggestLoss : '0';
+  };
+
+  // Desktop panel (referenced again below to toggle visibility).
   const summaryPanel = document.getElementById('summary-panel');
-  const summaryYourNet = document.getElementById('summary-your-net');
-  const summaryStandings = document.getElementById('summary-standings');
-  const summaryTotalPot = document.getElementById('summary-total-pot');
-  const summaryBiggestWin = document.getElementById('summary-biggest-win');
-  const summaryBiggestLoss = document.getElementById('summary-biggest-loss');
+  renderSummaryInto({
+    yourNetId: 'summary-your-net', yourValueClass: 'summary-your-value',
+    standingsId: 'summary-standings', rowClass: 'summary-player-row', tag: 'span',
+    nameClass: 'summary-player-name', netElClass: 'summary-player-net',
+    potId: 'summary-total-pot', bestId: 'summary-biggest-win', worstId: 'summary-biggest-loss',
+  });
 
-  if (summaryYourNet) {
-    const netSign = myNet > 0 ? '+' : '';
-    summaryYourNet.textContent = `${netSign}${myNet}`;
-    summaryYourNet.className = 'summary-your-value';
-    if (myNet > 0) summaryYourNet.classList.add('positive');
-    else if (myNet < 0) summaryYourNet.classList.add('negative');
-  }
-
-  if (summaryStandings) {
-    summaryStandings.innerHTML = '';
-    sortedPlayers.forEach(player => {
-      const row = document.createElement('div');
-      row.className = 'summary-player-row';
-      if (player.userId === currentUserId) row.classList.add('is-you');
-
-      let netClass = 'neutral';
-      if (player.totalNet > 0) netClass = 'positive';
-      else if (player.totalNet < 0) netClass = 'negative';
-
-      const netSign = player.totalNet > 0 ? '+' : '';
-      
-      row.innerHTML = `
-        <span class="summary-player-name" style="color: ${getUserColor(player.userId)}">${player.username}</span>
-        <span class="summary-player-net ${netClass}">${netSign}${player.totalNet}</span>
-      `;
-      summaryStandings.appendChild(row);
-    });
-  }
-
-  if (summaryTotalPot) summaryTotalPot.textContent = totalPot;
-  if (summaryBiggestWin) summaryBiggestWin.textContent = biggestWin > 0 ? `+${biggestWin}` : '0';
-  if (summaryBiggestLoss) summaryBiggestLoss.textContent = biggestLoss < 0 ? biggestLoss : '0';
-
-  // === Update Mobile Summary Panel ===
-  const summaryMobileYourNet = document.getElementById('summary-mobile-your-net');
-  const summaryMobileStandings = document.getElementById('summary-mobile-standings');
-  const summaryMobilePot = document.getElementById('summary-mobile-pot');
-  const summaryMobileBest = document.getElementById('summary-mobile-best');
-  const summaryMobileWorst = document.getElementById('summary-mobile-worst');
-
-  if (summaryMobileYourNet) {
-    const netSign = myNet > 0 ? '+' : '';
-    summaryMobileYourNet.textContent = `${netSign}${myNet}`;
-    summaryMobileYourNet.className = 'summary-mobile-your-value';
-    if (myNet > 0) summaryMobileYourNet.classList.add('positive');
-    else if (myNet < 0) summaryMobileYourNet.classList.add('negative');
-  }
-
-  if (summaryMobileStandings) {
-    summaryMobileStandings.innerHTML = '';
-    sortedPlayers.forEach(player => {
-      const card = document.createElement('div');
-      card.className = 'summary-mobile-player';
-      if (player.userId === currentUserId) card.classList.add('is-you');
-
-      let netClass = 'neutral';
-      if (player.totalNet > 0) netClass = 'positive';
-      else if (player.totalNet < 0) netClass = 'negative';
-
-      const netSign = player.totalNet > 0 ? '+' : '';
-      
-      card.innerHTML = `
-        <div class="summary-mobile-player-name" style="color: ${getUserColor(player.userId)}">${player.username}</div>
-        <div class="summary-mobile-player-net ${netClass}">${netSign}${player.totalNet}</div>
-      `;
-      summaryMobileStandings.appendChild(card);
-    });
-  }
-
-  if (summaryMobilePot) summaryMobilePot.textContent = totalPot;
-  if (summaryMobileBest) summaryMobileBest.textContent = biggestWin > 0 ? `+${biggestWin}` : '0';
-  if (summaryMobileWorst) summaryMobileWorst.textContent = biggestLoss < 0 ? biggestLoss : '0';
+  // Mobile panel.
+  renderSummaryInto({
+    yourNetId: 'summary-mobile-your-net', yourValueClass: 'summary-mobile-your-value',
+    standingsId: 'summary-mobile-standings', rowClass: 'summary-mobile-player', tag: 'div',
+    nameClass: 'summary-mobile-player-name', netElClass: 'summary-mobile-player-net',
+    potId: 'summary-mobile-pot', bestId: 'summary-mobile-best', worstId: 'summary-mobile-worst',
+  });
 
   // Show the panels with animation
   if (summaryPanel) summaryPanel.classList.add('visible');
@@ -949,207 +907,6 @@ function clearBetResultAnimations() {
   document.querySelectorAll('.spot-win, .spot-loss').forEach(spot => {
     spot.classList.remove('spot-win', 'spot-loss');
   });
-}
-
-/**
- * Called once we have betResults and we can safely show them (e.g.,
- * after the last card + an additional delay).
- * NOTE: This is now primarily used for backward compatibility / fallback
- */
-function showPayoutResults(betResults) {
-  // Aggregate results by player
-  const playerTotals = {};
-  let totalPot = 0;
-  let biggestWin = 0;
-  let biggestLoss = 0;
-
-  betResults.forEach((result) => {
-    const { userId, username, wager, net } = result;
-    totalPot += wager;
-
-    if (!playerTotals[userId]) {
-      playerTotals[userId] = {
-        userId,
-        username,
-        totalWager: 0,
-        totalNet: 0,
-        bets: []
-      };
-    }
-    playerTotals[userId].totalWager += wager;
-    playerTotals[userId].totalNet += net;
-    playerTotals[userId].bets.push(result);
-
-    if (net > biggestWin) biggestWin = net;
-    if (net < biggestLoss) biggestLoss = net;
-  });
-
-  // Convert to array and sort by net result (highest first)
-  const sortedPlayers = Object.values(playerTotals).sort((a, b) => b.totalNet - a.totalNet);
-
-  // Identify winner(s) and loser(s)
-  const maxNet = sortedPlayers.length > 0 ? sortedPlayers[0].totalNet : 0;
-  const minNet = sortedPlayers.length > 0 ? sortedPlayers[sortedPlayers.length - 1].totalNet : 0;
-
-  // Get current user's total net
-  const myData = playerTotals[currentUserId];
-  const myNet = myData ? myData.totalNet : 0;
-
-  // Populate dealt cards display
-  if (dealtCardsCache) {
-    const card1Img = document.querySelector('#result-card-1 img');
-    const card2Img = document.querySelector('#result-card-2 img');
-    const card3Img = document.querySelector('#result-card-3 img');
-    
-    if (card1Img) card1Img.src = getCardImageSrc(dealtCardsCache.card1);
-    if (card2Img) card2Img.src = getCardImageSrc(dealtCardsCache.card2);
-    if (card3Img) card3Img.src = getCardImageSrc(dealtCardsCache.card3);
-  }
-
-  // Populate player standings
-  const standingsGrid = document.getElementById('player-standings-grid');
-  standingsGrid.innerHTML = '';
-
-  sortedPlayers.forEach((player) => {
-    const card = document.createElement('div');
-    card.className = 'player-standing-card';
-
-    // Determine card class based on result
-    if (player.totalNet > 0 && player.totalNet === maxNet) {
-      card.classList.add('winner');
-    } else if (player.totalNet < 0 && player.totalNet === minNet) {
-      card.classList.add('loser');
-    } else if (player.totalNet === 0) {
-      card.classList.add('breakeven');
-    }
-
-    // Highlight if this is the current user
-    if (player.userId === currentUserId) {
-      card.classList.add('is-you');
-    }
-
-    // Determine net class
-    let netClass = 'neutral';
-    if (player.totalNet > 0) netClass = 'positive';
-    else if (player.totalNet < 0) netClass = 'negative';
-
-    // Format net with sign
-    const netSign = player.totalNet > 0 ? '+' : '';
-    const netText = `${netSign}${player.totalNet}`;
-
-    // Badge for winner/loser
-    let badge = '';
-    if (player.totalNet > 0 && player.totalNet === maxNet) {
-      badge = '<div class="player-badge">👑</div>';
-    } else if (player.totalNet < 0 && player.totalNet === minNet) {
-      badge = '<div class="player-badge">💀</div>';
-    } else if (player.totalNet === 0) {
-      badge = '<div class="player-badge">➖</div>';
-    }
-
-    // You indicator
-    const youIndicator = player.userId === currentUserId ? '<span class="you-indicator">You</span>' : '';
-
-    card.innerHTML = `
-      ${youIndicator}
-      <div class="player-name" style="color: ${getUserColor(player.userId)}">${player.username}</div>
-      <div class="player-net ${netClass}">${netText}</div>
-      <div class="player-wager">Wagered: ${player.totalWager}</div>
-      ${badge}
-    `;
-
-    standingsGrid.appendChild(card);
-  });
-
-  // Populate your bets section
-  const yourBetsList = document.getElementById('your-bets-list');
-  yourBetsList.innerHTML = '';
-
-  if (myData && myData.bets.length > 0) {
-    myData.bets.forEach((bet) => {
-      const betItem = document.createElement('div');
-      betItem.className = 'bet-item';
-      
-      const resultClass = bet.net > 0 ? 'win' : (bet.net < 0 ? 'loss' : '');
-      const netSign = bet.net > 0 ? '+' : '';
-      
-      betItem.innerHTML = `
-        <span class="bet-description">Card ${bet.cardNumber}: ${bet.betDescr}</span>
-        <span class="bet-result ${resultClass}">${netSign}${bet.net}</span>
-      `;
-      yourBetsList.appendChild(betItem);
-    });
-  } else {
-    yourBetsList.innerHTML = '<div class="bet-item"><span class="bet-description">No bets placed</span></div>';
-  }
-
-  // Your net result
-  const yourNetValue = document.getElementById('your-net-value');
-  const netSign = myNet > 0 ? '+' : '';
-  yourNetValue.textContent = `${netSign}${myNet}`;
-  yourNetValue.className = myNet > 0 ? 'positive' : (myNet < 0 ? 'negative' : '');
-
-  // Populate round stats
-  document.getElementById('stat-total-pot').textContent = totalPot;
-  document.getElementById('stat-biggest-win').textContent = biggestWin > 0 ? `+${biggestWin}` : '0';
-  document.getElementById('stat-biggest-loss').textContent = biggestLoss < 0 ? biggestLoss : '0';
-
-  // Show the modal
-  document.getElementById('payout-results').style.display = 'flex';
-
-  // Trigger confetti for winners
-  if (myNet > 0) {
-    triggerConfetti();
-    showToast(`You won ${myNet} tickets! 🎉`, 'success');
-  }
-
-  // If dealer, make sure button says "Clear" and remove dealing state
-  if (isDealer) {
-    const dealButton = document.getElementById('deal-button');
-    if (dealButton) {
-      dealButton.textContent = 'Clear';
-      dealButton.classList.remove('dealing');
-    }
-  }
-}
-
-/**
- * Trigger confetti animation for winners
- */
-function triggerConfetti() {
-  const container = document.getElementById('confetti-container');
-  if (!container) return;
-
-  container.innerHTML = '';
-
-  const colors = ['#d4af37', '#ffd700', '#ff6b6b', '#4ade80', '#60a5fa', '#f472b6'];
-  const confettiCount = 50;
-
-  for (let i = 0; i < confettiCount; i++) {
-    const confetti = document.createElement('div');
-    confetti.className = 'confetti';
-    confetti.style.left = Math.random() * 100 + '%';
-    confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-    confetti.style.animationDelay = Math.random() * 2 + 's';
-    confetti.style.transform = `rotate(${Math.random() * 360}deg)`;
-    
-    // Randomize shape
-    if (Math.random() > 0.5) {
-      confetti.style.borderRadius = '50%';
-    }
-    
-    container.appendChild(confetti);
-    
-    // Trigger animation
-    setTimeout(() => {
-      confetti.classList.add('active');
-    }, 50);
-  }
-
-  // Clean up after animation
-  setTimeout(() => {
-    container.innerHTML = '';
-  }, 5000);
 }
 
 /**
@@ -1356,25 +1113,7 @@ function rebuildUIFromState(gameState, currentUserId, isDealer) {
   if (bets && bets.length > 0) {
     bets.forEach((bet) => {
       const { userId, spotId, amount } = bet;
-      let targetEl;
-
-      if (spotId.includes('suits-')) {
-        targetEl = document.querySelector(`.border-bet[data-spot-id="${spotId}"]`);
-      } else if (spotId.includes('-odd') || spotId.includes('-even')) {
-        targetEl = document.querySelector(`.odd-even-bet[data-spot-id="${spotId}"]`);
-      } else if (spotId.includes('-joker')) {
-        targetEl = document.querySelector(`.joker-bet[data-spot-id="${spotId}"]`);
-      } else if (spotId.includes('-ace')) {
-        targetEl = document.querySelector(`.ace-bet[data-spot-id="${spotId}"]`);
-      } else if (spotId.includes('-low')) {
-        targetEl = document.querySelector(`.lowest-bet[data-spot-id="${spotId}"]`);
-      } else if (spotId.includes('-mid')) {
-        targetEl = document.querySelector(`.middle-bet[data-spot-id="${spotId}"]`);
-      } else if (spotId.includes('-high')) {
-        targetEl = document.querySelector(`.highest-bet[data-spot-id="${spotId}"]`);
-      } else {
-        targetEl = document.querySelector(`.suit-quad[data-spot-id="${spotId}"]`);
-      }
+      const targetEl = getBetSpotElement(spotId);
 
       if (!targetEl) return;
 
@@ -1466,8 +1205,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const cardSlot1 = document.getElementById('card-slot-1');
   const cardSlot2 = document.getElementById('card-slot-2');
   const cardSlot3 = document.getElementById('card-slot-3');
-  const payoutResultsContainer = document.getElementById('payout-results');
-  const closePayoutResultsBtn = document.getElementById('close-payout-results');
   const balanceList = document.getElementById('balance-list');
   const myBalanceDisplay = document.getElementById('my-balance-amount');
 
@@ -1668,7 +1405,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // cardsDealt => do a time-staggered reveal with progressive results
   socket.on('cardsDealt', async (dealData) => {
-    console.log('[cardsDealt] arrived, starting progressive reveal sequence');
+    dbg('[cardsDealt] arrived, starting progressive reveal sequence');
 
     // Enter dealing phase - cache any ticketUpdate events until cards finish flipping
     isDealingPhase = true;
@@ -1681,7 +1418,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Cards are already preloaded on page load, start flip sequence immediately
-    console.log('[cardsDealt] starting progressive flip sequence');
+    dbg('[cardsDealt] starting progressive flip sequence');
 
     // Title word elements for highlight animation
     const titleSteal = document.getElementById('title-steal');
@@ -1700,7 +1437,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ===== CARD 1 =====
-    console.log('[cardsDealt] Revealing Card 1');
+    dbg('[cardsDealt] Revealing Card 1');
     stealAudio.play().catch(err => {
       console.warn('Audio play failed for steal.mp3:', err);
     });
@@ -1708,7 +1445,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Wait for card to start flipping, then wait for flip animation to complete
     await revealCard(cardSlot1, dealData.card1, 'Card 1');
-    await delay(800); // Wait for flip animation (0.8s CSS transition)
+    await delay(TIMING.CARD_FLIP_MS); // Wait for flip animation (0.8s CSS transition)
     
     // Show bet results for card 1 (if we have them)
     let betResults = betResultsCache || await waitForBetResults();
@@ -1725,7 +1462,7 @@ document.addEventListener('DOMContentLoaded', () => {
     await delay(1500);
 
     // ===== CARD 2 =====
-    console.log('[cardsDealt] Revealing Card 2');
+    dbg('[cardsDealt] Revealing Card 2');
     ryansAudio.play().catch(err => {
       console.warn('Audio play failed for ryans.mp3:', err);
     });
@@ -1733,7 +1470,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Wait for card to start flipping, then wait for flip animation to complete
     await revealCard(cardSlot2, dealData.card2, 'Card 2');
-    await delay(800);
+    await delay(TIMING.CARD_FLIP_MS);
     
     // Show bet results for card 2
     betResults = betResultsCache || await waitForBetResults();
@@ -1750,16 +1487,15 @@ document.addEventListener('DOMContentLoaded', () => {
     await delay(1500);
 
     // ===== CARD 3 =====
-    console.log('[cardsDealt] Revealing Card 3');
+    dbg('[cardsDealt] Revealing Card 3');
     moneyAudio.play().catch(err => {
       console.warn('Audio play failed for money.mp3:', err);
     });
     if (titleMoney) titleMoney.classList.add('highlight');
-    finishedDealing = true;
     
     // Wait for card to start flipping, then wait for flip animation to complete
     await revealCard(cardSlot3, dealData.card3, 'Card 3');
-    await delay(800);
+    await delay(TIMING.CARD_FLIP_MS);
     
     // Show bet results for card 3
     betResults = betResultsCache || await waitForBetResults();
@@ -1801,23 +1537,21 @@ document.addEventListener('DOMContentLoaded', () => {
       dealButton.classList.remove('dealing');
     }
     
-    console.log('[cardsDealt] Progressive reveal sequence complete');
+    dbg('[cardsDealt] Progressive reveal sequence complete');
   });
 
   // longShotWins => cache for per-card celebrations
   socket.on('longShotWins', (longShotWins) => {
-    console.log('[longShotWins] event arrived:', longShotWins);
+    dbg('[longShotWins] event arrived:', longShotWins);
     longShotWinsCache = longShotWins;
   });
 
   // payouts => cache for progressive reveal (cardsDealt handles the display)
   socket.on('payoutResults', (betResults) => {
-    console.log('[payoutResults] event arrived, caching for progressive reveal');
+    dbg('[payoutResults] event arrived, caching for progressive reveal');
     // Store in betResultsCache for the progressive reveal sequence to use
     betResultsCache = betResults;
     
-    // Also keep payoutResultsCache for backward compatibility
-    payoutResultsCache = betResults;
   });
 
 
@@ -1834,12 +1568,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Listen for betPlaced (legacy/single)
-  socket.on('betPlaced', (betData) => {
-    const { userId, spotId, amount } = betData;
-    updateChipUI(userId, spotId, amount);
-  });
-
   // Listen for betPlacedBatch (new)
   socket.on('betPlacedBatch', (data) => {
     if (data.bets && Array.isArray(data.bets)) {
@@ -1854,9 +1582,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (dealButton) {
     dealButton.addEventListener('click', () => {
       if (dealButton.textContent === 'Deal') {
-        // IMPORTANT: we must reset these so the new round starts fresh
-        finishedDealing = false;
-        payoutResultsCache = null;
 
         // Switch to "Dealing" state
         dealButton.textContent = 'Dealing';
@@ -1870,14 +1595,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Close round results
-  closePayoutResultsBtn?.addEventListener('click', () => {
-    payoutResultsContainer.style.display = 'none';
-    // Clear confetti if still running
-    const confettiContainer = document.getElementById('confetti-container');
-    if (confettiContainer) confettiContainer.innerHTML = '';
-  });
-
   // roundCleared => UI reset
   socket.on('roundCleared', () => {
     // Clear all bet result animations and badges first
@@ -1886,8 +1603,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Remove all chips
     document.querySelectorAll('.chip').forEach(chip => chip.remove());
     
-    // Hide legacy modal (if somehow shown)
-    payoutResultsContainer.style.display = 'none';
     
     // Hide summary panels
     hideSummaryPanels();
@@ -1911,8 +1626,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Reset flags for all clients
-    finishedDealing = false;
-    payoutResultsCache = null;
     betResultsCache = null;  // Also clear the new cache
     dealtCardsCache = null;
     longShotWinsCache = null;
@@ -1929,41 +1642,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Clean up any leftover celebration elements
     cleanupCelebration();
-  });
-
-  // removeBet => update UI
-  socket.on('betRemoved', (data) => {
-    const { userId, spotId, newAmount } = data;
-    let chipSelector;
-
-    if (spotId.includes('suits-')) {
-      chipSelector = `.border-bet[data-spot-id="${spotId}"] .chip[data-user-id="${userId}"]`;
-    } else if (spotId.includes('-odd') || spotId.includes('-even')) {
-      chipSelector = `.odd-even-bet[data-spot-id="${spotId}"] .chip[data-user-id="${userId}"]`;
-    } else if (spotId.includes('-joker')) {
-      chipSelector = `.joker-bet[data-spot-id="${spotId}"] .chip[data-user-id="${userId}"]`;
-    } else if (spotId.includes('-ace')) {
-      chipSelector = `.ace-bet[data-spot-id="${spotId}"] .chip[data-user-id="${userId}"]`;
-    } else if (spotId.includes('-low')) {
-      chipSelector = `.lowest-bet[data-spot-id="${spotId}"] .chip[data-user-id="${userId}"]`;
-    } else if (spotId.includes('-mid')) {
-      chipSelector = `.middle-bet[data-spot-id="${spotId}"] .chip[data-user-id="${userId}"]`;
-    } else if (spotId.includes('-high')) {
-      chipSelector = `.highest-bet[data-spot-id="${spotId}"] .chip[data-user-id="${userId}"]`;
-    } else {
-      chipSelector = `.suit-quad[data-spot-id="${spotId}"] .chip[data-user-id="${userId}"]`;
-    }
-
-    const chipEl = document.querySelector(chipSelector);
-    if (!chipEl) return;
-
-    if (newAmount > 0) {
-      chipEl.dataset.amount = newAmount;
-      chipEl.textContent = newAmount;
-    } else {
-      chipEl.remove();
-    }
-    if (chipEl.parentElement) positionChips(chipEl.parentElement);
   });
 
   // betError => show a popup

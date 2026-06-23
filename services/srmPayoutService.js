@@ -1,4 +1,4 @@
-// rdsPayoutService.js
+// srmPayoutService.js
 const SrmGame = require('../models/SrmGame');
 const User = require('../models/User');
 

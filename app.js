@@ -140,67 +140,7 @@ io.on('connection', (socket) => {
     io.emit('playerUpdate', { userId, username, ticketBalance });
   });
 
-  socket.on('playerBet', async (betData) => {
-    const { gameId, userId, spotId, amount } = betData;
-    // ... (legacy handler can remain or be deprecated, keeping for compatibility) ...
-    // Note: To be fully robust, this should also use runSerialized, but we'll focus on the batch handler.
-    // If the client switches fully to batch, this won't be called.
-    // However, for safety, let's wrap this too or just leave it. 
-    // The user asked to "come up with a more efficient way", implying the new way is the batch way.
-    
-    // ... logic ...
-    try {
-      // Use serialization here too to be safe against mixed clients or single clicks
-      await runSerialized(gameId, async () => {
-          const game = await SrmGame.findById(gameId);
-          if (!game) return;
-
-          // Enforce: betting must be open
-          if (game.roundStatus !== 'betting') {
-            socket.emit('betError', {
-              message: 'Betting is closed for this round.'
-            });
-            return;
-          }
-
-          const user = await User.findById(userId);
-          if (!user) return;
-
-          // Check user has enough tickets, etc...
-          if (user.ticketBalance < amount) {
-            socket.emit('betError', {
-              message: 'Insufficient tickets for this bet.'
-            });
-            return;
-          }
-
-          const existingBet = game.bets.find(
-            (b) => b.userId.toString() === userId && b.spotId === spotId
-          );
-          if (existingBet) {
-            existingBet.amount += amount;
-          } else {
-            game.bets.push({ userId, spotId, amount });
-          }
-
-          await game.save();
-          await user.removeTickets(amount, `Bet placed - Game #${game.code}`);
-
-          io.to(`srmGame_${gameId}`).emit('betPlaced', betData);
-
-          // Emit live balance update to all players in the game room
-          io.to(`srmGame_${gameId}`).emit('ticketUpdate', {
-            userId: user._id.toString(),
-            username: user.username,
-            ticketBalance: user.ticketBalance
-          });
-      });
-    } catch (error) {
-      console.error('Error saving bet:', error);
-    }
-  });
-
-  // NEW: Batched Bet Handler
+  // Batched Bet Handler
   socket.on('playerBetBatch', (batchData) => {
     const { gameId, userId, bets } = batchData; // bets: [{ spotId, amount }, ...]
 
@@ -424,58 +364,6 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     if (socket.userId) removeUserColor(socket.userId);
     console.log('User disconnected');
-  });
-
-  socket.on('removeBet', async (data) => {
-    const { gameId, userId, spotId, amount } = data;
-
-    // Use serialization for legacy removeBet as well
-    runSerialized(gameId, async () => {
-        try {
-          const game = await SrmGame.findById(gameId);
-          if (!game) return;
-
-          // Enforce: betting must be open
-          if (game.roundStatus !== 'betting') {
-            socket.emit('betError', {
-              message: 'Bet removals are not allowed after cards are dealt.'
-            });
-            return;
-          }
-
-          const foundBet = game.bets.find(
-            (b) => b.userId.toString() === userId && b.spotId === spotId
-          );
-          if (!foundBet) return;
-
-          foundBet.amount -= amount;
-          if (foundBet.amount <= 0) {
-            game.bets = game.bets.filter((b) => b !== foundBet);
-          }
-
-          await game.save();
-
-          io.to(`srmGame_${gameId}`).emit('betRemoved', {
-            userId,
-            spotId,
-            newAmount: foundBet.amount <= 0 ? 0 : foundBet.amount,
-          });
-
-          // Refund tickets to user
-          const user = await User.findById(userId);
-          if (user) {
-            await user.addTickets(amount, `Bet removed - Game #${game.code}`);
-            // Emit live balance update to all players in the game room
-            io.to(`srmGame_${gameId}`).emit('ticketUpdate', {
-              userId: user._id.toString(),
-              username: user.username,
-              ticketBalance: user.ticketBalance,
-            });
-          }
-        } catch (error) {
-          console.error('Error removing bet:', error);
-        }
-    });
   });
 });
 
