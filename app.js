@@ -85,7 +85,7 @@ app.use((err, req, res, next) => {
 // playerBetBatch all run through this so a deal/clear can never interleave with an in-flight
 // bet batch. The money/state handlers live in services/srmGameHandlers.js (testable without a
 // live MongoDB); here we just inject their collaborators.
-const { runSerialized } = createSerializer();
+const { runSerialized, processedBatches } = createSerializer();
 const handlerDeps = {
   SrmGame,
   User,
@@ -94,6 +94,8 @@ const handlerDeps = {
   getShuffledDeckOf54,
   getOrAssignColor,
   runSerialized,
+  // Short-lived per-game clientBatchId -> confirmation store for Phase 3.3 idempotency.
+  processedBatches,
   // Set once the DB connection is open and we know whether transactions are supported (below).
   // null => the bet handler uses the single-document-atomic fallback.
   withTransaction: null,
@@ -162,6 +164,7 @@ io.on('connection', (socket) => {
         roundStatus: game.roundStatus,
         dealtCards: game.dealtCards,
         bets: game.bets,
+        rev: game.rev,
         players, // includes each player's assigned color
       });
     } catch (err) {
@@ -174,9 +177,10 @@ io.on('connection', (socket) => {
     io.emit('playerUpdate', { userId, username, ticketBalance });
   });
 
-  // Batched Bet Handler (validate at the trust boundary, then commit inside the per-game queue)
-  socket.on('playerBetBatch', (batchData) => {
-    handlePlayerBetBatch(handlerDeps, socket, batchData);
+  // Batched Bet Handler (validate at the trust boundary, then commit inside the per-game queue).
+  // `ack` is the Socket.IO acknowledgement callback when the client supplies one (Phase 3.4).
+  socket.on('playerBetBatch', (batchData, ack) => {
+    handlePlayerBetBatch(handlerDeps, socket, batchData, ack);
   });
 
   // DEAL CARDS (serialized + atomic guarded transition)

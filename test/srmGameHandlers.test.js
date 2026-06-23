@@ -35,6 +35,7 @@ function cloneGame(g) {
     roundStatus: g.roundStatus,
     bets: cloneBets(g.bets),
     dealtCards: cloneCards(g.dealtCards),
+    rev: g.rev,
   };
 }
 
@@ -91,6 +92,19 @@ function makeGameModel(store) {
             });
           }
           doc[key] = value;
+        }
+      }
+      if (update.$inc) {
+        // Atomic increment (e.g. the monotonic game.rev). Records an undo so the transaction fake
+        // can roll it back with the rest of the session's writes.
+        for (const [key, delta] of Object.entries(update.$inc)) {
+          const old = doc[key] || 0;
+          if (opts.session && opts.session._undo) {
+            opts.session._undo.push(() => {
+              doc[key] = old;
+            });
+          }
+          doc[key] = old + delta;
         }
       }
       if (update.$set && 'bets' in update.$set && typeof model.onBetsWrite === 'function') {
@@ -192,13 +206,14 @@ function setup({ roundStatus = 'betting', bets = [], balance = 50, onDebit = nul
       roundStatus,
       bets: cloneBets(bets),
       dealtCards: [],
+      rev: 0,
     },
   };
   const user = makeUser({ _id: userId, username: 'Alice', ticketBalance: balance, onDebit });
   const usersById = { [userId]: user };
   let payoutCalls = 0;
   const io = makeIo();
-  const { runSerialized } = createSerializer();
+  const { runSerialized, processedBatches } = createSerializer();
   const gameModel = makeGameModel(store);
   const userModel = makeUserModel(usersById);
   const deps = {
@@ -206,6 +221,7 @@ function setup({ roundStatus = 'betting', bets = [], balance = 50, onDebit = nul
     User: userModel,
     io,
     runSerialized,
+    processedBatches,
     withTransaction: transactions ? makeWithTransaction() : null,
     computePayouts: async () => { payoutCalls += 1; },
     getShuffledDeckOf54: () => cloneCards(DECK3),
@@ -606,4 +622,184 @@ test('fallback path: a debit failing after the bets write rolls the bets back (n
   assert.strictEqual(had(socket.emitted, 'betError').length, 1);
   assert.match(had(socket.emitted, 'betError')[0].payload.message, /insufficient/i, 'reason is insufficient funds');
   assert.strictEqual(had(ctx.io.emitted, 'betPlacedBatch').length, 0, 'nothing confirmed');
+});
+
+// ---- Phase 3: protocol hardening (absolute echoes, acks, idempotency, rev guard) ----
+
+test('Phase 3.1: betPlacedBatch echoes the new ABSOLUTE per-spot total (existing+delta), not the delta', async () => {
+  const ctx = setup({ balance: 100, bets: [{ userId: oid('u1'), spotId: 'card1-high', amount: 5 }] });
+  const socket = makeSocket();
+
+  await handlePlayerBetBatch(ctx.deps, socket, {
+    gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: 7 }],
+  });
+
+  const payload = had(ctx.io.emitted, 'betPlacedBatch')[0].payload;
+  const entry = payload.bets.find((b) => b.spotId === 'card1-high');
+  assert.strictEqual(entry.total, 12, 'absolute total 5 existing + 7 added = 12 (NOT the 7 delta)');
+  assert.strictEqual(entry.userId, ctx.userId, 'keyed by user');
+  assert.strictEqual(typeof payload.rev, 'number', 'the broadcast carries the new rev');
+  assert.ok(!('amount' in entry), 'no delta field is echoed');
+});
+
+test('Phase 3.1: a removal echoes total 0 so the client clears the chip', async () => {
+  const ctx = setup({ balance: 50, bets: [{ userId: oid('u1'), spotId: 'card1-high', amount: 10 }] });
+  const socket = makeSocket();
+
+  await handlePlayerBetBatch(ctx.deps, socket, {
+    gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: -10 }],
+  });
+
+  const payload = had(ctx.io.emitted, 'betPlacedBatch')[0].payload;
+  const entry = payload.bets.find((b) => b.spotId === 'card1-high');
+  assert.strictEqual(entry.total, 0, 'a fully removed spot echoes total 0');
+  assert.strictEqual(ctx.user.ticketBalance, 60, 'the 10 stake is refunded');
+});
+
+test('Phase 3.4: the ack reports {ok, bets:[{spotId,total}], balance, rev} on success', async () => {
+  const ctx = setup({ balance: 50 });
+  const socket = makeSocket();
+  let ackRes;
+
+  await handlePlayerBetBatch(
+    ctx.deps, socket,
+    { gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: 10 }], clientBatchId: 'a1' },
+    (r) => { ackRes = r; }
+  );
+
+  assert.strictEqual(ackRes.ok, true);
+  assert.deepStrictEqual(ackRes.bets, [{ spotId: 'card1-high', total: 10 }], 'ack carries spotId+absolute total');
+  assert.strictEqual(ackRes.balance, 40);
+  assert.strictEqual(typeof ackRes.rev, 'number');
+});
+
+test('Phase 3.4: the ack reports {ok:false, reason} when betting is closed (and nothing is charged)', async () => {
+  const ctx = setup({ balance: 50, roundStatus: 'results' });
+  const socket = makeSocket();
+  let ackRes;
+
+  await handlePlayerBetBatch(
+    ctx.deps, socket,
+    { gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: 10 }] },
+    (r) => { ackRes = r; }
+  );
+
+  assert.strictEqual(ackRes.ok, false);
+  assert.match(ackRes.reason, /closed/i);
+  assert.strictEqual(ctx.user.ticketBalance, 50, 'not charged');
+});
+
+test('Phase 3.4: a validation failure is acked {ok:false} without entering the queue', async () => {
+  const ctx = setup({ balance: 50 });
+  const socket = makeSocket();
+  let ackRes;
+
+  await handlePlayerBetBatch(
+    ctx.deps, socket,
+    { gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: 1.9 }] },
+    (r) => { ackRes = r; }
+  );
+
+  assert.strictEqual(ackRes.ok, false, 'fractional amount rejected at the trust boundary');
+  assert.strictEqual(ctx.user.ticketBalance, 50, 'not charged');
+  assert.strictEqual(had(socket.emitted, 'betError').length, 1, 'betError still raised for the toast');
+});
+
+test('Phase 3.3: a duplicate clientBatchId is charged once and re-emits the identical confirmation', async () => {
+  const ctx = setup({ balance: 50 });
+  const socket = makeSocket();
+  const acks = [];
+  const ack = (r) => acks.push(r);
+  const batch = {
+    gameId: ctx.gameId, userId: ctx.userId,
+    bets: [{ spotId: 'card1-high', amount: 10 }], clientBatchId: 'dup-1',
+  };
+
+  await handlePlayerBetBatch(ctx.deps, socket, batch, ack);
+  await handlePlayerBetBatch(ctx.deps, socket, batch, ack); // identical retry
+
+  assert.strictEqual(ctx.user.ticketBalance, 40, 'charged exactly once (not 30)');
+  assert.strictEqual(
+    ctx.store[ctx.gameId].bets.find((b) => b.spotId === 'card1-high').amount,
+    10,
+    'stake is not doubled by the replay'
+  );
+  assert.strictEqual(ctx.store[ctx.gameId].rev, 1, 'only the first commit advanced rev; the replay does not write');
+  // First time broadcasts to the room; the duplicate replays to the requesting socket only.
+  assert.strictEqual(had(ctx.io.emitted, 'betPlacedBatch').length, 1, 'broadcast exactly once');
+  assert.strictEqual(had(socket.emitted, 'betPlacedBatch').length, 1, 'duplicate replays to the requester');
+  assert.strictEqual(acks.length, 2, 'both sends are acked');
+  assert.deepStrictEqual(acks[0], acks[1], 'the duplicate receives the identical confirmation');
+  assert.strictEqual(acks[0].ok, true);
+  assert.deepStrictEqual(acks[0].bets, [{ spotId: 'card1-high', total: 10 }]);
+});
+
+test('Phase 3.3: every committed game mutation advances game.rev monotonically', async () => {
+  const ctx = setup({ balance: 50 });
+  assert.strictEqual(ctx.store[ctx.gameId].rev, 0, 'fresh game starts at rev 0');
+
+  await handlePlayerBetBatch(ctx.deps, makeSocket(), {
+    gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: 5 }], clientBatchId: 'm1',
+  });
+  assert.strictEqual(ctx.store[ctx.gameId].rev, 1, 'bet commit +1');
+
+  await handleDealCards(ctx.deps, makeSocket(), { gameId: ctx.gameId, userId: ctx.dealerId });
+  assert.strictEqual(ctx.store[ctx.gameId].rev, 3, 'deal +1 then finalize +1');
+
+  await handleClearRound(ctx.deps, makeSocket(), { gameId: ctx.gameId, userId: ctx.dealerId });
+  assert.strictEqual(ctx.store[ctx.gameId].rev, 4, 'clear +1');
+});
+
+test('Phase 3.3: a rev mismatch no-ops a stale bet commit — a deal+clear cycle cannot resurrect cleared bets (transaction path)', async () => {
+  const ctx = setup({ balance: 50 });
+  ctx.store[ctx.gameId].rev = 5; // a game already mid-life
+  const socket = makeSocket();
+
+  // The handler reads at rev 5, debits, then writes bets. Simulate a full deal+clear cycle (by
+  // another process) landing in between: it advances rev and clears bets but returns the round to
+  // 'betting'. The roundStatus guard alone cannot tell this from "no change"; the rev guard must
+  // reject so the stale $set cannot resurrect the cleared bet.
+  ctx.user.onDebit = async () => {
+    const g = ctx.store[ctx.gameId];
+    g.rev += 3;                 // deal (+1), finalize (+1), clear (+1)
+    g.bets = [];                // round cleared
+    g.roundStatus = 'betting';  // ...and reopened for the next round
+  };
+
+  let ackRes;
+  await handlePlayerBetBatch(
+    ctx.deps, socket,
+    { gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: 10 }] },
+    (r) => { ackRes = r; }
+  );
+
+  assert.strictEqual(ctx.user.ticketBalance, 50, 'the debit rolled back with the aborted transaction');
+  assert.deepStrictEqual(ctx.store[ctx.gameId].bets, [], 'the cleared bets are NOT resurrected');
+  assert.strictEqual(ctx.store[ctx.gameId].rev, 8, 'only the external cycle advanced rev; the stale write did not apply');
+  assert.strictEqual(had(socket.emitted, 'betError').length, 1);
+  assert.strictEqual(had(ctx.io.emitted, 'betPlacedBatch').length, 0, 'nothing confirmed');
+  assert.strictEqual(ackRes.ok, false);
+});
+
+test('Phase 3.3: the rev guard no-ops a stale bet commit on the fallback path too (no resurrection, wallet untouched)', async () => {
+  const ctx = setup({ balance: 50, transactions: false });
+  ctx.store[ctx.gameId].rev = 5;
+  const socket = makeSocket();
+
+  // Fallback writes bets first; the cycle lands just before that write, advancing rev under us.
+  ctx.gameModel.beforeWrite = async () => {
+    const g = ctx.store[ctx.gameId];
+    g.rev += 3;
+    g.bets = [];
+    g.roundStatus = 'betting';
+  };
+
+  await handlePlayerBetBatch(ctx.deps, socket, {
+    gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: 10 }],
+  });
+
+  assert.strictEqual(ctx.user.ticketBalance, 50, 'wallet untouched — the bets write no-oped before any debit');
+  assert.deepStrictEqual(ctx.store[ctx.gameId].bets, [], 'cleared bets are not resurrected');
+  assert.strictEqual(ctx.store[ctx.gameId].rev, 8, 'our stale write did not advance rev');
+  assert.strictEqual(had(socket.emitted, 'betError').length, 1);
 });

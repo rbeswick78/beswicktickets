@@ -272,6 +272,9 @@ async function computePayouts(gameId, chosenCards, io) {
 
       betResults.push({
         userId: userId.toString(),
+        // spotId lets the client key results directly off the chip's data-spot-id (Phase 3.2),
+        // instead of reconstructing it from betDescr. betDescr stays for human display.
+        spotId,
         username: userNameForDisplay,
         cardNumber,
         betDescr,

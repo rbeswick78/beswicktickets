@@ -25,6 +25,16 @@ const srmGameSchema = new mongoose.Schema({
     type: [Object],
     default: [],
   },
+  // Monotonic revision counter (Phase 3.3). Every committed game mutation ($inc: {rev: 1})
+  // — deal, finalize, clear, and the bet commit — advances it. The bet commit captures rev at
+  // read and requires it unchanged at write, which closes the ABA window the roundStatus guard
+  // cannot see: a deal+clear cycle returns the round to 'betting' with bets:[], indistinguishable
+  // from "no change" by status alone, but rev has advanced, so a stale $set no-ops instead of
+  // resurrecting cleared bets. Clients can also use rev to detect dropped/out-of-order frames.
+  rev: {
+    type: Number,
+    default: 0,
+  },
 });
 
 module.exports = mongoose.model('srmGame', srmGameSchema);

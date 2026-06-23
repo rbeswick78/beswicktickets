@@ -244,6 +244,15 @@ function flashBetPlaced(betAmount) {
 let pendingBets = [];
 let batchTimer = null;
 
+// Stable id per batch so the server can dedupe a retried send (Phase 3.3 idempotency). uuid where
+// available (secure contexts), with a best-effort fallback so non-secure dev origins still work.
+function makeBatchId() {
+  if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+    return window.crypto.randomUUID();
+  }
+  return `b-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function sendPendingBets() {
   if (pendingBets.length === 0) return;
 
@@ -264,11 +273,23 @@ function sendPendingBets() {
   const uId = window.currentUserId;
 
   if (finalBets.length > 0 && gId && uId) {
-    socket.emit('playerBetBatch', {
-      gameId: gId,
-      userId: uId,
-      bets: finalBets
-    });
+    socket.emit(
+      'playerBetBatch',
+      {
+        gameId: gId,
+        userId: uId,
+        bets: finalBets,
+        clientBatchId: makeBatchId(),
+      },
+      // Ack (Phase 3.4): the server answers {ok, bets:[{spotId,total}], balance, rev} or
+      // {ok:false, reason}. Chips/balance already reconcile from the room broadcast and the
+      // absolute totals; the ack is the seam Phase 4 builds optimistic UI + retry on.
+      (ack) => {
+        if (ack && ack.ok === false) {
+          dbg('[playerBetBatch] rejected:', ack.reason);
+        }
+      }
+    );
   }
 
   pendingBets = [];
@@ -288,24 +309,21 @@ function queueBet(spotId, amount) {
   }
 }
 
-function updateChipUI(userId, spotId, amount) {
+// Set a spot's chip to the server's ABSOLUTE per-user total (Phase 3.1). Because the server
+// echoes the new total (not a delta), the client SETS rather than adds — so a lost, duplicated,
+// or reordered frame is self-correcting. total <= 0 means the user has no stake left here.
+function setChipUI(userId, spotId, total) {
   const targetEl = getBetSpotElement(spotId);
 
   if (!targetEl) return;
   const existingChip = targetEl.querySelector(`.chip[data-user-id="${userId}"]`);
-  if (existingChip) {
-    const currentAmount = parseInt(existingChip.dataset.amount || '0', 10);
-    const newAmount = currentAmount + amount;
-    
-    if (newAmount <= 0) {
-      existingChip.remove();
-    } else {
-      existingChip.dataset.amount = newAmount;
-      existingChip.textContent = newAmount;
-    }
-  } else if (amount > 0) {
-    // Only create if positive
-    const chipEl = createChipElement(userId, amount, spotId);
+  if (total <= 0) {
+    if (existingChip) existingChip.remove();
+  } else if (existingChip) {
+    existingChip.dataset.amount = total;
+    existingChip.textContent = total;
+  } else {
+    const chipEl = createChipElement(userId, total, spotId);
     targetEl.appendChild(chipEl);
   }
   positionChips(targetEl);
@@ -489,57 +507,13 @@ async function showCardBetResults(cardNumber, allBetResults) {
   }
 
   const allChips = bettingContainer.querySelectorAll('.chip');
-  
-  // Helper to convert suit name to symbol
-  function suitNameToSymbol(name) {
-    switch (name.toLowerCase()) {
-      case 'spades': return '♠';
-      case 'hearts': return '♥';
-      case 'diamonds': return '♦';
-      case 'clubs': return '♣';
-      default: return name;
-    }
-  }
-  
-  // Create a lookup by constructing expected spotIds from betDescr
-  // We need to handle that the suits order in spotId might differ from betDescr
+
+  // Key results directly off the server-provided spotId (Phase 3.2). This replaces the old
+  // betDescr->spotId reconstruction (and its duplicate suitNameToSymbol): the chip's data-spot-id
+  // and the result's spotId are now the same string, so the match is exact.
   const betLookup = {};
   cardBets.forEach(bet => {
-    // Convert betDescr to spotId format
-    // Server betDescr examples: "Diamonds", "Hearts or Clubs", "Odd", "Joker", "Lowest"
-    // DOM spotId examples: "card1-suit-♦", "card1-suits-♥♣", "card1-odd", "card1-joker", "card1-low"
-    let spotId = `card${cardNumber}-`;
-    const descr = bet.betDescr.toLowerCase();
-    
-    if (descr.includes(' or ')) {
-      // Double suit bet like "Hearts or Clubs"
-      // The order in the server description matches the spotId order
-      const suits = descr.split(' or ').map(s => suitNameToSymbol(s.trim()));
-      spotId += 'suits-' + suits.join('');
-    } else if (['diamonds', 'hearts', 'spades', 'clubs'].includes(descr)) {
-      // Single suit bet
-      spotId += 'suit-' + suitNameToSymbol(descr);
-    } else if (descr === 'odd') {
-      spotId += 'odd';
-    } else if (descr === 'even') {
-      spotId += 'even';
-    } else if (descr === 'joker') {
-      spotId += 'joker';
-    } else if (descr === 'ace') {
-      spotId += 'ace';
-    } else if (descr === 'lowest') {
-      spotId += 'low';
-    } else if (descr === 'middle') {
-      spotId += 'mid';
-    } else if (descr === 'highest') {
-      spotId += 'high';
-    } else {
-      // Fallback - shouldn't happen with proper server data
-      spotId += descr.replace(/\s+/g, '-');
-    }
-    
-    const key = `${bet.userId}:${spotId}`;
-    dbg(`[showCardBetResults] Creating lookup key: ${key} for bet:`, bet.betDescr);
+    const key = `${bet.userId}:${bet.spotId}`;
     if (!betLookup[key]) {
       betLookup[key] = { net: 0, wager: 0 };
     }
@@ -638,48 +612,11 @@ async function resolveLMHBets(allBetResults) {
   
   dbg(`[resolveLMHBets] Resolving ${pendingChips.length} pending L/M/H bets`);
   
-  // Helper to convert suit name to symbol (same as in showCardBetResults)
-  function suitNameToSymbol(name) {
-    switch (name.toLowerCase()) {
-      case 'spades': return '♠';
-      case 'hearts': return '♥';
-      case 'diamonds': return '♦';
-      case 'clubs': return '♣';
-      default: return name;
-    }
-  }
-  
-  // Build lookup from all bet results
+  // Build lookup keyed directly off the server-provided spotId (Phase 3.2) — same exact match the
+  // chips use, no betDescr reconstruction.
   const betLookup = {};
   allBetResults.forEach(bet => {
-    const cardNumber = bet.cardNumber;
-    let spotId = `card${cardNumber}-`;
-    const descr = bet.betDescr.toLowerCase();
-    
-    if (descr.includes(' or ')) {
-      const suits = descr.split(' or ').map(s => suitNameToSymbol(s.trim()));
-      spotId += 'suits-' + suits.join('');
-    } else if (['diamonds', 'hearts', 'spades', 'clubs'].includes(descr)) {
-      spotId += 'suit-' + suitNameToSymbol(descr);
-    } else if (descr === 'odd') {
-      spotId += 'odd';
-    } else if (descr === 'even') {
-      spotId += 'even';
-    } else if (descr === 'joker') {
-      spotId += 'joker';
-    } else if (descr === 'ace') {
-      spotId += 'ace';
-    } else if (descr === 'lowest') {
-      spotId += 'low';
-    } else if (descr === 'middle') {
-      spotId += 'mid';
-    } else if (descr === 'highest') {
-      spotId += 'high';
-    } else {
-      spotId += descr.replace(/\s+/g, '-');
-    }
-    
-    const key = `${bet.userId}:${spotId}`;
+    const key = `${bet.userId}:${bet.spotId}`;
     if (!betLookup[key]) {
       betLookup[key] = { net: 0, wager: 0 };
     }
@@ -1568,11 +1505,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Listen for betPlacedBatch (new)
+  // Listen for betPlacedBatch — each entry is an ABSOLUTE per-spot total (Phase 3.1), so we SET.
   socket.on('betPlacedBatch', (data) => {
     if (data.bets && Array.isArray(data.bets)) {
       data.bets.forEach(bet => {
-        updateChipUI(bet.userId, bet.spotId, bet.amount);
+        setChipUI(bet.userId, bet.spotId, bet.total);
       });
     }
   });
