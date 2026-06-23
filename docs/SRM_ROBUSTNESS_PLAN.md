@@ -6,9 +6,10 @@
 > fix real money/data loss next, then perceived loss, then structure.
 >
 > **Workflow: one phase per session.** Each session (1) reads this doc, (2) implements one
-> phase, (3) commits it to a branch, (4) updates the Progress log below, and (5) ends with a
-> copy-paste handoff prompt for the next session. This doc is the durable source of truth — a
-> new session has none of the prior chat context, so anything that must survive lives here.
+> phase, (3) commits and pushes it directly to `main`, (4) updates the Progress log below, and
+> (5) ends with a copy-paste handoff prompt for the next session. This doc is the durable source
+> of truth — a new session has none of the prior chat context, so anything that must survive
+> lives here.
 
 ## 0. Progress log
 
@@ -21,7 +22,7 @@
 | 4 — Client responsiveness | ⬜ Not started | Depends on Phase 3. Optimistic chips, pointer events, reconnect resync. |
 | 5 — Structural refactor | ⬜ Not started | Module split. Do last. |
 
-**Phase 0 commit state:** committed on branch `srm-phase0-cleanup` (not pushed; commit `ccc1b30`). Includes `docs/SRM_ROBUSTNESS_PLAN.md` and `test/deck.test.js`. Phase 1 should branch from `main` after this merges, or continue on this branch if reviewing as a stack.
+**Phase 0 commit state:** merged and pushed to `main` (commit `ccc1b30` + doc updates). Phase 1 onward works directly on `main` per the workflow above.
 
 ## 1. Problem statement
 
@@ -76,12 +77,16 @@ code worth removing.
   normalized to one integer value used for *both* wallet and bets. (R⑧)
 
 ### Infrastructure prerequisites
-- **MongoDB transactions need a replica set.** `config/db.js` points at a bare
-  `mongodb://…:27017` with no `replicaSet`. Phase 2's atomic wallet+bet write is best done
-  with `session.withTransaction`, which requires a replica set (a single-node RS is fine).
-  If converting infra is undesirable now, Phase 2 has a transaction-free fallback (bets-first,
-  debit-last, guaranteed reversal) — but the real fix is a transaction. **Decision needed
-  before Phase 2.**
+- **MongoDB transactions need a replica set.** `config/db.js` / `env.sample` point at a bare
+  standalone `mongodb://localhost:27017` with no `replicaSet`.
+  **Decision (2026-06-23): enable transactions via a single-node replica set** (one-time
+  `replSet` config + `rs.initiate()`; or use Atlas, which is already a replica set). Phase 2
+  writes the wallet+bet commit with `session.withTransaction` **and a graceful fallback** to
+  atomic single-document ops (`findOneAndUpdate` with `$inc`/`$push`, bets-first/debit-last)
+  when the connection reports no transaction support, so a plain standalone dev box still runs.
+  Rationale: tickets are redeemable (real value), a single-node RS is ~5 min of one-time setup,
+  and most of Phase 2's value (lost-update / minting fixes) is single-doc-atomic anyway — the
+  transaction only adds cross-document atomicity.
 - **No test runner exists.** Introduce one in Phase 0 (recommended: Node's built-in
   `node:test` + `node --test`, zero new deps) so each subsequent phase ships with regression
   tests for the race/exploit it closes.
