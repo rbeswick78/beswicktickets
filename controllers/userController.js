@@ -1,4 +1,6 @@
 const User = require('../models/User');
+const Transaction = require('../models/Transaction');
+const { mergeTransactionHistory } = require('../services/transactionHistory');
 
 class UserController {
   // Method to create a new user (admin only)
@@ -131,18 +133,18 @@ class UserController {
     }
   }
 
-  // Method to get a user's transactions
+  // Method to get a user's transactions (Phase 2.3: Transaction collection unioned with any
+  // not-yet-migrated embedded history, newest-first — see services/transactionHistory).
   async getUserTransactions(req, res) {
     try {
       const { userId } = req.params;
 
-      // Find the user and select only the transactions
-      const user = await User.findById(userId).select('transactions');
+      const user = await User.findById(userId).select('transactions').lean();
       if (!user) {
         return res.status(404).send('User not found');
       }
-
-      res.json(user.transactions);
+      const txns = await Transaction.find({ userId }).lean();
+      res.json(mergeTransactionHistory(txns, user.transactions));
     } catch (error) {
       console.error('Error fetching transactions:', error.message);
       res.status(500).send(`Error fetching transactions: ${error.message}`);

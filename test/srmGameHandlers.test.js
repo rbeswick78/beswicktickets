@@ -54,43 +54,113 @@ function matchesFilter(doc, filter) {
   return true;
 }
 
-// In-memory SrmGame: findById returns a snapshot; findOneAndUpdate applies $set atomically
-// only if the precondition filter still matches the *current* stored doc (else returns null).
+// In-memory SrmGame: findById returns a snapshot; findOneAndUpdate applies $set atomically only
+// if the precondition filter still matches the *current* stored doc (else returns null). When a
+// session is passed (transaction path), each write records an undo so the session can roll it
+// back — modelling MongoDB rolling back only the writes made within the transaction. Test hooks:
+//   - failNextFindOneAndUpdate: force the next write to throw (a forced game-write failure)
+//   - beforeWrite: one-shot, fires at the start of the next write (race landing before it)
+//   - onBetsWrite: one-shot, fires after a successful bets write (race landing right after it)
 function makeGameModel(store) {
-  return {
+  const model = {
+    failNextFindOneAndUpdate: false,
+    beforeWrite: null,
+    onBetsWrite: null,
     async findById(id) {
       return store[id] ? cloneGame(store[id]) : null;
     },
     async findOneAndUpdate(filter, update, opts = {}) {
+      if (typeof model.beforeWrite === 'function') {
+        const hook = model.beforeWrite;
+        model.beforeWrite = null;
+        await hook();
+      }
+      if (model.failNextFindOneAndUpdate) {
+        model.failNextFindOneAndUpdate = false;
+        throw new Error('forced game write failure');
+      }
       const doc = store[filter._id];
       if (!doc || !matchesFilter(doc, filter)) return null;
       if (update.$set) {
         // Assign per-key (no JSON flattening) so an ObjectId-like userId survives the write.
-        for (const [key, value] of Object.entries(update.$set)) doc[key] = value;
+        for (const [key, value] of Object.entries(update.$set)) {
+          const old = doc[key];
+          if (opts.session && opts.session._undo) {
+            opts.session._undo.push(() => {
+              doc[key] = old;
+            });
+          }
+          doc[key] = value;
+        }
+      }
+      if (update.$set && 'bets' in update.$set && typeof model.onBetsWrite === 'function') {
+        const hook = model.onBetsWrite;
+        model.onBetsWrite = null;
+        await hook();
       }
       return opts.new ? cloneGame(doc) : null;
     },
   };
+  return model;
 }
 
 function makeUser({ _id, username, ticketBalance, onDebit }) {
+  // Plain holder; the wallet moves now happen through the model's atomic statics (Phase 2.1).
+  // `onDebit` is fired by debitTickets so a test can inject a concurrent change mid-debit.
+  return { _id, username, ticketBalance, onDebit };
+}
+
+// In-memory User model with the atomic wallet statics the handler now uses. Each static mutates
+// the stored user in one synchronous step (modelling MongoDB's atomic $inc) and, when a session
+// is passed, records an undo so the transaction fake can roll it back. debitTickets honors the
+// {$gte} guard: it returns null (no change) when funds are insufficient.
+function makeUserModel(usersById) {
   return {
-    _id,
-    username,
-    ticketBalance,
-    onDebit, // read via `this` so tests can attach the hook after setup()
-    async removeTickets(qty) {
-      this.ticketBalance -= qty;
-      if (this.onDebit) await this.onDebit();
+    async findById(id) {
+      return usersById[id] || null;
     },
-    async addTickets(qty) {
-      this.ticketBalance += qty;
+    async debitTickets(userId, qty, reason, opts = {}) {
+      const user = usersById[userId];
+      if (!user || user.ticketBalance < qty) return null;
+      const old = user.ticketBalance;
+      user.ticketBalance -= qty;
+      if (opts.session && opts.session._undo) {
+        opts.session._undo.push(() => {
+          user.ticketBalance = old;
+        });
+      }
+      if (typeof user.onDebit === 'function') await user.onDebit();
+      return { _id: user._id, username: user.username, ticketBalance: user.ticketBalance };
+    },
+    async creditTickets(userId, qty, reason, opts = {}) {
+      const user = usersById[userId];
+      if (!user) throw new Error('User not found');
+      const old = user.ticketBalance;
+      user.ticketBalance += qty;
+      if (opts.session && opts.session._undo) {
+        opts.session._undo.push(() => {
+          user.ticketBalance = old;
+        });
+      }
+      return { _id: user._id, username: user.username, ticketBalance: user.ticketBalance };
     },
   };
 }
 
-function makeUserModel(usersById) {
-  return { async findById(id) { return usersById[id] || null; } };
+// Faithful in-memory withTransaction: runs work(session); on success the writes stand, on throw
+// every write tagged with this session's undo is rolled back (newest first) and the error is
+// rethrown. Writes made WITHOUT the session (a concurrent external change) are not rolled back,
+// exactly like a real transaction.
+function makeWithTransaction() {
+  return async function withTransaction(work) {
+    const session = { _undo: [] };
+    try {
+      return await work(session);
+    } catch (err) {
+      for (const undo of session._undo.slice().reverse()) undo();
+      throw err;
+    }
+  };
 }
 
 function makeIo() {
@@ -106,7 +176,10 @@ function makeIo() {
 const makeSocket = () => ({ emitted: [], emit(event, payload) { this.emitted.push({ event, payload }); } });
 const had = (sink, event) => sink.filter((e) => e.event === event);
 
-function setup({ roundStatus = 'betting', bets = [], balance = 50, onDebit = null } = {}) {
+// `transactions` selects the commit path under test: true (default) injects a faithful
+// withTransaction (the production replica-set path); false leaves it null so the handler takes
+// the single-document-atomic fallback.
+function setup({ roundStatus = 'betting', bets = [], balance = 50, onDebit = null, transactions = true } = {}) {
   const gameId = 'g1';
   const userId = 'u1';
   const dealerId = 'dealer1';
@@ -126,16 +199,19 @@ function setup({ roundStatus = 'betting', bets = [], balance = 50, onDebit = nul
   let payoutCalls = 0;
   const io = makeIo();
   const { runSerialized } = createSerializer();
+  const gameModel = makeGameModel(store);
+  const userModel = makeUserModel(usersById);
   const deps = {
-    SrmGame: makeGameModel(store),
-    User: makeUserModel(usersById),
+    SrmGame: gameModel,
+    User: userModel,
     io,
     runSerialized,
+    withTransaction: transactions ? makeWithTransaction() : null,
     computePayouts: async () => { payoutCalls += 1; },
     getShuffledDeckOf54: () => cloneCards(DECK3),
     getOrAssignColor: () => '#abcdef',
   };
-  return { gameId, userId, dealerId, store, user, io, deps, payouts: () => payoutCalls };
+  return { gameId, userId, dealerId, store, user, io, deps, gameModel, userModel, payouts: () => payoutCalls };
 }
 
 // ---- The core invariant: a bet resolving across a deal is all-or-nothing ----
@@ -405,4 +481,129 @@ test('a removal refunds and is clamped to the existing stake', async () => {
   });
   assert.strictEqual(ctx.user.ticketBalance, 50, 'refund clamped to the 10 actually wagered');
   assert.ok(!ctx.store[ctx.gameId].bets.some((b) => b.spotId === 'card1-high'), 'zeroed bet removed');
+});
+
+// ---- Phase 2: wallet integrity (atomic wallet+bet under both commit paths) ----
+
+test('a payout credit racing a bet debit on the same user converges to the correct balance', async () => {
+  // The classic lost-update race: a payout credits the same user mid-bet. With atomic $inc both
+  // moves apply; a read-modify-write would drop one. The credit fires (without a session — a
+  // separate process) right after the debit's balance write, before the bets commit.
+  const ctx = setup({ balance: 100 });
+  const socket = makeSocket();
+  ctx.user.onDebit = async () => {
+    await ctx.deps.User.creditTickets(ctx.userId, 50, 'payout');
+  };
+
+  await handlePlayerBetBatch(ctx.deps, socket, {
+    gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: 30 }],
+  });
+
+  assert.strictEqual(ctx.user.ticketBalance, 120, '100 - 30 debit + 50 credit: both moves applied');
+  assert.strictEqual(
+    ctx.store[ctx.gameId].bets.find((b) => b.spotId === 'card1-high').amount,
+    30,
+    'the bet is recorded'
+  );
+  assert.strictEqual(had(socket.emitted, 'betError').length, 0);
+});
+
+test('transaction path: a forced game-write failure rolls the wallet back (no drift)', async () => {
+  const ctx = setup({ balance: 50 }); // transaction path (default)
+  const socket = makeSocket();
+  ctx.gameModel.failNextFindOneAndUpdate = true; // the bets write throws inside the transaction
+
+  await handlePlayerBetBatch(ctx.deps, socket, {
+    gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: 10 }],
+  });
+
+  assert.strictEqual(ctx.user.ticketBalance, 50, 'the debit was rolled back with the transaction');
+  assert.deepStrictEqual(ctx.store[ctx.gameId].bets, [], 'no bet recorded');
+  assert.strictEqual(had(socket.emitted, 'betError').length, 1);
+  assert.strictEqual(had(ctx.io.emitted, 'betPlacedBatch').length, 0, 'nothing confirmed');
+});
+
+test('transaction path: a refund (net-negative) rolls back too when the game write fails', async () => {
+  const ctx = setup({ balance: 40, bets: [{ userId: oid('u1'), spotId: 'card1-high', amount: 10 }] });
+  const socket = makeSocket();
+  ctx.gameModel.failNextFindOneAndUpdate = true;
+
+  await handlePlayerBetBatch(ctx.deps, socket, {
+    gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: -10 }],
+  });
+
+  assert.strictEqual(ctx.user.ticketBalance, 40, 'the refund credit was rolled back, not kept');
+  assert.strictEqual(
+    ctx.store[ctx.gameId].bets.find((b) => b.spotId === 'card1-high').amount,
+    10,
+    'the stake is untouched'
+  );
+  assert.strictEqual(had(socket.emitted, 'betError').length, 1);
+});
+
+test('fallback path: a valid bet is charged, recorded, and broadcast', async () => {
+  const ctx = setup({ balance: 50, transactions: false });
+  const socket = makeSocket();
+
+  await handlePlayerBetBatch(ctx.deps, socket, {
+    gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: 10 }],
+  });
+
+  assert.strictEqual(ctx.user.ticketBalance, 40, 'charged the stake');
+  assert.strictEqual(ctx.store[ctx.gameId].bets.find((b) => b.spotId === 'card1-high').amount, 10);
+  assert.strictEqual(had(ctx.io.emitted, 'betPlacedBatch').length, 1);
+  assert.strictEqual(had(ctx.io.emitted, 'ticketUpdate').length, 1);
+  assert.strictEqual(had(socket.emitted, 'betError').length, 0);
+});
+
+test('fallback path: a forced bets-write failure leaves the wallet untouched (no drift)', async () => {
+  const ctx = setup({ balance: 50, transactions: false });
+  const socket = makeSocket();
+  ctx.gameModel.failNextFindOneAndUpdate = true; // bets write is first; it throws before any debit
+
+  await handlePlayerBetBatch(ctx.deps, socket, {
+    gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: 10 }],
+  });
+
+  assert.strictEqual(ctx.user.ticketBalance, 50, 'wallet never touched — bets write is first');
+  assert.deepStrictEqual(ctx.store[ctx.gameId].bets, [], 'no bet recorded');
+  assert.strictEqual(had(socket.emitted, 'betError').length, 1);
+});
+
+test('fallback path: betting closing before the bets write no-ops without touching the wallet', async () => {
+  const ctx = setup({ balance: 50, transactions: false });
+  const socket = makeSocket();
+  // A deal lands between our snapshot read and the bets write: the guard then no-ops it.
+  ctx.gameModel.beforeWrite = async () => {
+    ctx.store[ctx.gameId].roundStatus = 'resultsPending';
+  };
+
+  await handlePlayerBetBatch(ctx.deps, socket, {
+    gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: 10 }],
+  });
+
+  assert.strictEqual(ctx.user.ticketBalance, 50, 'wallet untouched when the bets write no-ops');
+  assert.deepStrictEqual(ctx.store[ctx.gameId].bets, [], 'no bet recorded');
+  assert.strictEqual(had(socket.emitted, 'betError').length, 1);
+  assert.match(had(socket.emitted, 'betError')[0].payload.message, /betting closed/i, 'reason is betting-closed');
+});
+
+test('fallback path: a debit failing after the bets write rolls the bets back (no drift)', async () => {
+  const ctx = setup({ balance: 50, transactions: false });
+  const socket = makeSocket();
+  // A concurrent drain empties the balance right after the (successful) bets write, before our
+  // debit. The debit guard then fails, and the bets must be rolled back to the pre-image.
+  ctx.gameModel.onBetsWrite = async () => {
+    ctx.user.ticketBalance = 0;
+  };
+
+  await handlePlayerBetBatch(ctx.deps, socket, {
+    gameId: ctx.gameId, userId: ctx.userId, bets: [{ spotId: 'card1-high', amount: 10 }],
+  });
+
+  assert.strictEqual(ctx.user.ticketBalance, 0, 'no over-charge — the debit found insufficient funds');
+  assert.deepStrictEqual(ctx.store[ctx.gameId].bets, [], 'the bets write was rolled back to the pre-image');
+  assert.strictEqual(had(socket.emitted, 'betError').length, 1);
+  assert.match(had(socket.emitted, 'betError')[0].payload.message, /insufficient/i, 'reason is insufficient funds');
+  assert.strictEqual(had(ctx.io.emitted, 'betPlacedBatch').length, 0, 'nothing confirmed');
 });

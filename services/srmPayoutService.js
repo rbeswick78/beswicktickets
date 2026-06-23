@@ -299,16 +299,18 @@ async function computePayouts(gameId, chosenCards, io) {
         });
       }
 
-      // Now update tickets if totalPayout > 0
+      // Now update tickets if totalPayout > 0. Atomic $inc (Phase 2.1) instead of a
+      // read-modify-write on the populated user doc, so a payout credit can't lose an update
+      // racing a concurrent bet debit on the same user.
       if (userDoc && totalPayout > 0) {
         try {
           const reason = `Steal Ryan's Money - Game #${game.code}`;
-          await userDoc.addTickets(totalPayout, reason);
+          const credited = await User.creditTickets(userId, totalPayout, reason);
 
           io.emit('ticketUpdate', {
-            userId: userDoc._id,
-            username: userDoc.username,
-            ticketBalance: userDoc.ticketBalance,
+            userId: credited._id,
+            username: userNameForDisplay,
+            ticketBalance: credited.ticketBalance,
           });
         } catch (err) {
           console.error('Error updating user tickets:', err);

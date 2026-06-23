@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const Transaction = require('../models/Transaction');
+const { mergeTransactionHistory } = require('../services/transactionHistory');
 const ensureAuthenticated = require('../middleware/auth');
 const checkAdminRole = require('../middleware/authorization');
 
@@ -103,17 +105,19 @@ router.post('/remove-tickets', ensureAuthenticated, checkAdminRole, async (req, 
   }
 });
 
-// Route to get user transaction history (Admin only)
+// Route to get user transaction history (Admin only). Phase 2.3: Transaction collection unioned
+// with any not-yet-migrated embedded history, newest-first (see services/transactionHistory).
 router.get('/:id/transactions', ensureAuthenticated, checkAdminRole, async (req, res) => {
   const userId = req.params.id;
 
   try {
-    const user = await User.findById(userId, 'transactions');
+    const user = await User.findById(userId, 'transactions').lean();
     if (!user) {
       return res.status(404).send('User not found.');
     }
 
-    res.json(user.transactions);
+    const txns = await Transaction.find({ userId }).lean();
+    res.json(mergeTransactionHistory(txns, user.transactions));
   } catch (err) {
     console.error('Error fetching transactions:', err);
     res.status(500).send('Internal server error.');

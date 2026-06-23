@@ -43,7 +43,7 @@ function createSerializer() {
  * dealt/cleared under us the wallet move is reversed and nothing is recorded.
  */
 function handlePlayerBetBatch(deps, socket, batchData) {
-  const { SrmGame, User, io, runSerialized } = deps;
+  const { SrmGame, User, io, runSerialized, withTransaction } = deps;
   const { gameId, userId, bets } = batchData || {};
 
   if (!gameId || !userId) return Promise.resolve();
@@ -108,37 +108,10 @@ function handlePlayerBetBatch(deps, socket, batchData) {
       return;
     }
 
-    // Wallet move. (Phase 2 makes this atomic with the bets write; Phase 1 keeps the
-    // existing method + an explicit reversal if the guarded commit does not land.)
-    if (netAmount > 0) {
-      if (user.ticketBalance < netAmount) {
-        socket.emit('betError', { message: 'Insufficient tickets for these bets.' });
-        return;
-      }
-      await user.removeTickets(netAmount, `Bets placed (Batch) - Game #${game.code}`);
-    } else if (netAmount < 0) {
-      await user.addTickets(Math.abs(netAmount), `Bets removed (Batch) - Game #${game.code}`);
-    }
-
-    const reverseWallet = async (note) => {
-      try {
-        if (netAmount > 0) {
-          await user.addTickets(netAmount, `Refund - Game #${game.code} ${note}`);
-        } else if (netAmount < 0) {
-          await user.removeTickets(Math.abs(netAmount), `Reversal - Game #${game.code} ${note}`);
-        }
-      } catch (revErr) {
-        console.error('Critical: failed to reverse wallet after bet commit failure:', revErr);
-      }
-    };
-
-    // Merge the validated deltas onto a fresh copy of the current bets, then commit the whole
-    // array atomically, guarded on roundStatus:'betting'.
-    const merged = game.bets.map((b) => ({
-      userId: b.userId,
-      spotId: b.spotId,
-      amount: b.amount,
-    }));
+    // Pre-image of the current bets (used to roll the bets write back on the fallback path) and
+    // the new full bets array (validated deltas merged onto the current bets).
+    const preImageBets = game.bets.map((b) => ({ userId: b.userId, spotId: b.spotId, amount: b.amount }));
+    const merged = preImageBets.map((b) => ({ userId: b.userId, spotId: b.spotId, amount: b.amount }));
     for (const vb of validatedBets) {
       const existing = merged.find(
         (b) => b.userId.toString() === userId && b.spotId === vb.spotId
@@ -151,28 +124,44 @@ function handlePlayerBetBatch(deps, socket, batchData) {
     }
     const cleaned = merged.filter((b) => b.amount > 0);
 
-    // ABA caveat: this guard catches a deal (betting -> resultsPending) landing between our read
-    // and our write, but NOT a full deal+clear cycle that returns the round to 'betting' with a
-    // fresh bets:[] — that would let this $set resurrect stale bets. The per-game serializer
-    // makes that sequence impossible within this process (deal/clear/bet never interleave); the
-    // residual cross-process window is closed in Phase 3 by guarding on a monotonic game.rev.
-    let updated;
-    try {
-      updated = await SrmGame.findOneAndUpdate(
-        { _id: gameId, roundStatus: 'betting' },
-        { $set: { bets: cleaned } },
-        { new: true }
-      );
-    } catch (saveError) {
-      console.error('Game bets commit failed, reversing wallet:', saveError);
-      await reverseWallet('save failed');
+    // Fast reject before any write: if the snapshot already shows insufficient funds there is no
+    // point touching the round. The atomic debit guard (debitTickets) is the authoritative check.
+    if (netAmount > 0 && user.ticketBalance < netAmount) {
+      socket.emit('betError', { message: 'Insufficient tickets for these bets.' });
       return;
     }
 
-    if (!updated) {
-      // The round was dealt/cleared between our read and our write: no-op + un-charge.
-      await reverseWallet('betting closed');
-      socket.emit('betError', { message: 'Betting closed before your bet was recorded.' });
+    const reason =
+      netAmount >= 0
+        ? `Bets placed (Batch) - Game #${game.code}`
+        : `Bets removed (Batch) - Game #${game.code}`;
+
+    // Commit the wallet move and the game.bets write atomically. Prefer a real transaction
+    // (injected when the connection supports one); fall back to bets-first/debit-last with a
+    // wrapped+retried reversal on a plain standalone mongod.
+    //
+    // ABA caveat (unchanged from Phase 1): the roundStatus:'betting' guard on the bets write
+    // catches a deal (betting -> resultsPending) landing between our read and our write, but NOT
+    // a full deal+clear cycle that returns the round to 'betting' with a fresh bets:[]. The
+    // per-game serializer makes that sequence impossible within this process; the residual
+    // cross-process window is closed in Phase 3 by guarding on a monotonic game.rev.
+    const commitArgs = {
+      SrmGame,
+      User,
+      gameId,
+      userId,
+      netAmount,
+      cleaned,
+      preImageBets,
+      reason,
+      snapshotBalance: user.ticketBalance,
+    };
+    const result = withTransaction
+      ? await commitBetWithTransaction(withTransaction, commitArgs)
+      : await commitBetFallback(commitArgs);
+
+    if (!result.ok) {
+      socket.emit('betError', { message: result.message });
       return;
     }
 
@@ -185,9 +174,163 @@ function handlePlayerBetBatch(deps, socket, batchData) {
     io.to(`srmGame_${gameId}`).emit('ticketUpdate', {
       userId: user._id.toString(),
       username: user.username,
-      ticketBalance: user.ticketBalance,
+      ticketBalance: result.balance,
     });
   });
+}
+
+/** Run `fn` up to `attempts` times, returning its result or throwing the last error. */
+async function withRetry(fn, attempts = 3) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Preferred commit path: the wallet debit/credit and the game.bets write run inside one MongoDB
+ * transaction (single-node replica set per the §3 decision). Debit first, so insufficient funds
+ * or a closed round aborts before anything durable is written; throwing inside the transaction
+ * rolls the wallet move back automatically — no manual compensation.
+ *
+ * Note: session.withTransaction may RE-RUN this callback on a transient transaction error; each
+ * re-run re-applies the same pre-read `cleaned`/`netAmount` snapshot against freshly-committed
+ * state (the prior attempt was aborted), which is correct under the per-game serializer. The
+ * residual cross-process case where another committer changed game.bets is the same window the
+ * roundStatus:'betting' guard can't see and that Phase 3's monotonic game.rev guard closes.
+ *
+ * Returns { ok: true, balance } or { ok: false, message }.
+ */
+async function commitBetWithTransaction(withTransaction, args) {
+  const { SrmGame, User, gameId, userId, netAmount, cleaned, reason, snapshotBalance } = args;
+  let balance = snapshotBalance;
+  try {
+    await withTransaction(async (session) => {
+      if (netAmount > 0) {
+        const debited = await User.debitTickets(userId, netAmount, reason, { session });
+        if (!debited) {
+          const e = new Error('insufficient funds');
+          e.srmReason = 'Insufficient tickets for these bets.';
+          throw e;
+        }
+        balance = debited.ticketBalance;
+      } else if (netAmount < 0) {
+        const credited = await User.creditTickets(userId, Math.abs(netAmount), reason, { session });
+        balance = credited.ticketBalance;
+      }
+      const updated = await SrmGame.findOneAndUpdate(
+        { _id: gameId, roundStatus: 'betting' },
+        { $set: { bets: cleaned } },
+        { new: true, session }
+      );
+      if (!updated) {
+        const e = new Error('betting closed');
+        e.srmReason = 'Betting closed before your bet was recorded.';
+        throw e;
+      }
+    });
+  } catch (err) {
+    if (err && err.srmReason) {
+      return { ok: false, message: err.srmReason };
+    }
+    console.error('Bet transaction failed and was rolled back:', err);
+    return { ok: false, message: 'Your bet could not be processed. Please try again.' };
+  }
+  return { ok: true, balance };
+}
+
+/**
+ * Fallback commit path for a standalone mongod with no transaction support: bets first, wallet
+ * last. The bets write is the guarded operation, so the common "betting closed" race no-ops it
+ * and the wallet is never touched — no reversal needed. If the wallet move then fails, the bets
+ * write is rolled back to its pre-image (wrapped + retried). This is strictly weaker than the
+ * transaction path across a cross-process payout race and exists only so a dev box without a
+ * replica set still runs; production uses the transaction path.
+ *
+ * Returns { ok: true, balance } or { ok: false, message }.
+ */
+async function commitBetFallback(args) {
+  const { SrmGame, User, gameId, userId, netAmount, cleaned, preImageBets, reason, snapshotBalance } = args;
+
+  let betsWritten;
+  try {
+    betsWritten = await SrmGame.findOneAndUpdate(
+      { _id: gameId, roundStatus: 'betting' },
+      { $set: { bets: cleaned } },
+      { new: true }
+    );
+  } catch (err) {
+    console.error('Bet commit (bets write) failed; wallet untouched:', err);
+    return { ok: false, message: 'Your bet could not be processed. Please try again.' };
+  }
+  if (!betsWritten) {
+    // Round was dealt/cleared before our write. Wallet never touched — nothing to reverse.
+    return { ok: false, message: 'Betting closed before your bet was recorded.' };
+  }
+
+  // Roll the bets write back to its pre-image. Guarded on roundStatus:'betting' on purpose: we
+  // must NOT clobber a concurrent deal/clear that has since changed the round. Within this process
+  // the serializer guarantees the round is still 'betting' here, so the reversal applies. The only
+  // way it can no-op is a cross-process deal flipping the round between our bets write and this
+  // reversal — the documented fallback weakness that Phase 3's game.rev guard closes. We surface
+  // that as a loud CRITICAL alarm (rather than swallowing a null result as success) so the
+  // resulting uncharged-but-recorded bet is detectable and can be reconciled.
+  const reverseBets = () =>
+    withRetry(() =>
+      SrmGame.findOneAndUpdate(
+        { _id: gameId, roundStatus: 'betting' },
+        { $set: { bets: preImageBets } },
+        { new: true }
+      )
+    )
+      .then((reverted) => {
+        if (!reverted) {
+          console.error(
+            `CRITICAL: bet reversal for game ${gameId} user ${userId} did not apply (round left ` +
+              'betting); an uncharged bet may remain recorded — reconcile manually.'
+          );
+        }
+      })
+      .catch((err) => {
+        console.error('CRITICAL: failed to roll back bets after a wallet failure (possible drift):', err);
+      });
+
+  if (netAmount > 0) {
+    let debited;
+    try {
+      debited = await User.debitTickets(userId, netAmount, reason);
+    } catch (err) {
+      console.error('Bet debit failed; rolling back bets:', err);
+      await reverseBets();
+      return { ok: false, message: 'Your bet could not be processed. Please try again.' };
+    }
+    if (!debited) {
+      // A concurrent drain emptied the balance after our fast-reject. Undo the bets write.
+      await reverseBets();
+      return { ok: false, message: 'Insufficient tickets for these bets.' };
+    }
+    return { ok: true, balance: debited.ticketBalance };
+  }
+
+  if (netAmount < 0) {
+    let credited;
+    try {
+      credited = await User.creditTickets(userId, Math.abs(netAmount), reason);
+    } catch (err) {
+      console.error('Bet refund failed; rolling back bets:', err);
+      await reverseBets();
+      return { ok: false, message: 'Your bet could not be processed. Please try again.' };
+    }
+    return { ok: true, balance: credited.ticketBalance };
+  }
+
+  // net === 0: bets rearranged with no wallet movement.
+  return { ok: true, balance: snapshotBalance };
 }
 
 /**

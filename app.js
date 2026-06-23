@@ -24,12 +24,14 @@ const { computePayouts } = require('./services/srmPayoutService');
 const { getShuffledDeckOf54 } = require('./utils/deck');
 const SrmGame = require('./models/SrmGame');
 const User = require('./models/User');
+const Transaction = require('./models/Transaction');
 const {
   createSerializer,
   handlePlayerBetBatch,
   handleDealCards,
   handleClearRound,
 } = require('./services/srmGameHandlers');
+const { detectTransactionSupport, buildWithTransaction } = require('./services/mongoTransactions');
 
 // For color assignment (already in your snippet)
 const { getOrAssignColor, removeUserColor } = require('./services/userColorService');
@@ -92,7 +94,33 @@ const handlerDeps = {
   getShuffledDeckOf54,
   getOrAssignColor,
   runSerialized,
+  // Set once the DB connection is open and we know whether transactions are supported (below).
+  // null => the bet handler uses the single-document-atomic fallback.
+  withTransaction: null,
 };
+
+// Pick the wallet+bet commit path once the DB connection is open. On a replica set (production,
+// per §3) bets commit inside a transaction; on a plain standalone dev mongod we fall back to
+// single-document-atomic writes. `mongoose` here is the connection exported by config/db.
+async function configureWalletTransactions() {
+  try {
+    const supported = await detectTransactionSupport(mongoose, Transaction);
+    handlerDeps.withTransaction = supported ? buildWithTransaction(mongoose) : null;
+    console.log(
+      supported
+        ? 'MongoDB transactions supported: bets commit wallet+bets atomically in a transaction.'
+        : 'MongoDB transactions unavailable (standalone): using single-document-atomic fallback.'
+    );
+  } catch (err) {
+    console.error('Could not configure wallet transactions; using fallback path:', err);
+    handlerDeps.withTransaction = null;
+  }
+}
+if (mongoose.readyState === 1) {
+  configureWalletTransactions();
+} else {
+  mongoose.once('open', configureWalletTransactions);
+}
 
 // SOCKET.IO EVENTS
 io.on('connection', (socket) => {
