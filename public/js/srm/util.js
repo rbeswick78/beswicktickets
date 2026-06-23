@@ -12,11 +12,6 @@ export function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/** Build a unique bet key from userId and spotId for grouping */
-export function getBetKey(userId, spotId) {
-  return `${userId}-${spotId}`;
-}
-
 // Stable id per batch so the server can dedupe a retried send (Phase 3.3 idempotency). uuid where
 // available (secure contexts), with a best-effort fallback so non-secure dev origins still work.
 export function makeBatchId() {

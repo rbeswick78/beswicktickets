@@ -27,18 +27,6 @@ export function getCardImageSrc(card) {
 }
 
 /**
- * Preload a card image and return a promise that resolves when loaded
- */
-export function preloadCardImage(card) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve(img.src);
-    img.onerror = () => resolve(getCardImageSrc(card)); // Resolve anyway on error
-    img.src = getCardImageSrc(card);
-  });
-}
-
-/**
  * Preload ALL card SVGs on page load for instant responsiveness
  */
 export function preloadAllCardImages() {

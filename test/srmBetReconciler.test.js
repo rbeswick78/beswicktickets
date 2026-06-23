@@ -1,7 +1,7 @@
 // Unit tests for the pure optimistic-bet reconciler (Phase 4). DOM-free, network-free: this is
 // the core state machine the client renders from, exercised here without jsdom (none is available
-// — see the SRM test-environment note). The DOM glue in public/js/srmGameBoard.js is covered by
-// the manual matrix in the plan's §7.
+// — see the SRM test-environment note). The DOM glue in the public/js/srm/ modules (behind the
+// srmGameBoard.js entry) is covered by the manual matrix in the plan's §7.
 const test = require('node:test');
 const assert = require('node:assert');
 const { createBetReconciler, nextRevState, aggregateBatch } = require('../public/js/srmBetReconciler');
