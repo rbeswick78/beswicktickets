@@ -21,7 +21,7 @@
 | 4 — Client responsiveness | ⬜ Not started | Depends on Phase 3. Optimistic chips, pointer events, reconnect resync. |
 | 5 — Structural refactor | ⬜ Not started | Module split. Do last. |
 
-**Phase 0 commit state:** uncommitted in the working tree on `main` (plus new files `docs/SRM_ROBUSTNESS_PLAN.md`, `test/deck.test.js`). Recommended: commit to a branch (e.g. `srm-phase0-cleanup`) so each phase is an isolated, reviewable unit.
+**Phase 0 commit state:** committed on branch `srm-phase0-cleanup` (not pushed; commit `ccc1b30`). Includes `docs/SRM_ROBUSTNESS_PLAN.md` and `test/deck.test.js`. Phase 1 should branch from `main` after this merges, or continue on this branch if reviewing as a stack.
 
 ## 1. Problem statement
 
