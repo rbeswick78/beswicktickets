@@ -24,6 +24,12 @@ const { computePayouts } = require('./services/srmPayoutService');
 const { getShuffledDeckOf54 } = require('./utils/deck');
 const SrmGame = require('./models/SrmGame');
 const User = require('./models/User');
+const {
+  createSerializer,
+  handlePlayerBetBatch,
+  handleDealCards,
+  handleClearRound,
+} = require('./services/srmGameHandlers');
 
 // For color assignment (already in your snippet)
 const { getOrAssignColor, removeUserColor } = require('./services/userColorService');
@@ -73,20 +79,20 @@ app.use((err, req, res, next) => {
   res.status(500).send('Something went wrong!');
 });
 
-// Global serialization queues to prevent race conditions
-const gameQueues = {}; // gameId -> Promise chain
-
-function runSerialized(gameId, task) {
-  if (!gameQueues[gameId]) {
-    gameQueues[gameId] = Promise.resolve();
-  }
-  // Chain the task. We catch errors inside the chain so one failure doesn't block future tasks.
-  const next = gameQueues[gameId].then(task).catch(err => {
-    console.error(`Serialized task error for game ${gameId}:`, err);
-  });
-  gameQueues[gameId] = next;
-  return next;
-}
+// Global per-game serialization queue to prevent race conditions. dealCards, clearRound, and
+// playerBetBatch all run through this so a deal/clear can never interleave with an in-flight
+// bet batch. The money/state handlers live in services/srmGameHandlers.js (testable without a
+// live MongoDB); here we just inject their collaborators.
+const { runSerialized } = createSerializer();
+const handlerDeps = {
+  SrmGame,
+  User,
+  io,
+  computePayouts,
+  getShuffledDeckOf54,
+  getOrAssignColor,
+  runSerialized,
+};
 
 // SOCKET.IO EVENTS
 io.on('connection', (socket) => {
@@ -140,225 +146,19 @@ io.on('connection', (socket) => {
     io.emit('playerUpdate', { userId, username, ticketBalance });
   });
 
-  // Batched Bet Handler
+  // Batched Bet Handler (validate at the trust boundary, then commit inside the per-game queue)
   socket.on('playerBetBatch', (batchData) => {
-    const { gameId, userId, bets } = batchData; // bets: [{ spotId, amount }, ...]
-
-    runSerialized(gameId, async () => {
-      try {
-        const game = await SrmGame.findById(gameId);
-        if (!game) return;
-
-        // Enforce: betting must be open
-        if (game.roundStatus !== 'betting') {
-          socket.emit('betError', { message: 'Betting is closed for this round.' });
-          return;
-        }
-
-        const user = await User.findById(userId);
-        if (!user) return;
-
-        // FIX: Validate and calculate actual amounts based on existing bets
-        // This prevents refunding more than what was actually bet
-        let validatedAddAmount = 0;
-        let validatedRefundAmount = 0;
-        const validatedBets = [];
-
-        for (const bet of bets) {
-          const { spotId, amount } = bet;
-          const existingBet = game.bets.find(
-            (b) => b.userId.toString() === userId && b.spotId === spotId
-          );
-
-          if (amount > 0) {
-            // Adding chips - validate user has enough balance (checked later)
-            validatedAddAmount += amount;
-            validatedBets.push({ spotId, amount });
-          } else if (amount < 0) {
-            // Removing chips - only allow removal up to existing bet amount
-            const existingAmount = existingBet ? existingBet.amount : 0;
-            const requestedRemoval = Math.abs(amount);
-            const actualRemoval = Math.min(requestedRemoval, existingAmount);
-
-            if (actualRemoval > 0) {
-              validatedRefundAmount += actualRemoval;
-              validatedBets.push({ spotId, amount: -actualRemoval });
-            }
-            // Ignore removal requests for bets that don't exist or exceed bet amount
-          }
-        }
-
-        const netAmount = validatedAddAmount - validatedRefundAmount;
-
-        // Transaction logic on User with validated amounts
-        if (netAmount > 0) {
-          // SPEND tickets
-          if (user.ticketBalance < netAmount) {
-            socket.emit('betError', { message: 'Insufficient tickets for these bets.' });
-            return;
-          }
-          await user.removeTickets(netAmount, `Bets placed (Batch) - Game #${game.code}`);
-        } else if (netAmount < 0) {
-          // REFUND tickets (validated removal amount)
-          await user.addTickets(Math.abs(netAmount), `Bets removed (Batch) - Game #${game.code}`);
-        }
-        // If netAmount === 0, no wallet change needed
-
-        try {
-          // Update game bets with validated amounts
-          for (const bet of validatedBets) {
-            const { spotId, amount } = bet;
-            const existingBet = game.bets.find(
-              (b) => b.userId.toString() === userId && b.spotId === spotId
-            );
-
-            if (existingBet) {
-              existingBet.amount += amount;
-            } else if (amount > 0) {
-              // Only push if positive amount
-              game.bets.push({ userId, spotId, amount });
-            }
-          }
-
-          // Cleanup: Remove any bets that have dropped to <= 0
-          game.bets = game.bets.filter(b => b.amount > 0);
-
-          await game.save();
-        } catch (saveError) {
-          // If game save fails, reverse the user transaction
-          console.error('Game save failed, reversing user transaction:', saveError);
-
-          if (netAmount > 0) {
-            // We removed tickets, so add them back
-            await user.addTickets(netAmount, `Refund - Game #${game.code} Save Failed`);
-          } else if (netAmount < 0) {
-            // We added tickets, so remove them back
-            try {
-              await user.removeTickets(Math.abs(netAmount), `Reversal - Game #${game.code} Save Failed`);
-            } catch (reversalErr) {
-              console.error('Critical: Failed to reverse refund', reversalErr);
-            }
-          }
-          throw saveError;
-        }
-
-        // Emit batch confirmation with validated bets
-        const confirmedBets = validatedBets.map(b => ({
-          userId,
-          spotId: b.spotId,
-          amount: b.amount
-        }));
-
-        io.to(`srmGame_${gameId}`).emit('betPlacedBatch', { bets: confirmedBets });
-
-        // Emit live balance update to all players in the game room
-        io.to(`srmGame_${gameId}`).emit('ticketUpdate', {
-          userId: user._id.toString(),
-          username: user.username,
-          ticketBalance: user.ticketBalance
-        });
-
-      } catch (error) {
-        console.error('Error processing bet batch:', error);
-      }
-    });
+    handlePlayerBetBatch(handlerDeps, socket, batchData);
   });
 
-  // DEAL CARDS
-  socket.on('dealCards', async (data) => {
-    const { gameId, userId } = data;
-
-    try {
-      const game = await SrmGame.findById(gameId);
-      if (!game) return;
-
-      // FIX: Verify the user is the dealer
-      if (!userId || game.dealer.toString() !== userId) {
-        socket.emit('betError', { message: 'Only the dealer can deal cards.' });
-        return;
-      }
-
-      // FIX: Only allow dealing when round is in betting status
-      if (game.roundStatus !== 'betting') {
-        socket.emit('betError', { message: 'Cards have already been dealt for this round.' });
-        return;
-      }
-
-      const deck = getShuffledDeckOf54();
-      const chosenCards = deck.slice(0, 3);
-
-      // Set roundStatus = "resultsPending"
-      game.dealtCards = chosenCards;
-      game.roundStatus = 'resultsPending';
-      await game.save();
-
-      // Send the three cards
-      io.to(`srmGame_${gameId}`).emit('cardsDealt', {
-        card1: chosenCards[0],
-        card2: chosenCards[1],
-        card3: chosenCards[2],
-      });
-
-      // Compute payouts
-      await computePayouts(gameId, chosenCards, io);
-
-      // FIX #1: After payouts are computed, set roundStatus to "results"
-      game.roundStatus = 'results';
-      await game.save();
-
-      // (Optional) If you want to push fresh data to all clients:
-      io.to(`srmGame_${gameId}`).emit('gameData', {
-        roundStatus: game.roundStatus,
-        dealtCards: game.dealtCards,
-        bets: game.bets,
-        players: await Promise.all(
-          game.players.map(async (pId) => {
-            const p = await User.findById(pId);
-            return {
-              userId: p._id.toString(),
-              username: p.username,
-              ticketBalance: p.ticketBalance,
-              color: getOrAssignColor(p._id.toString())
-            };
-          })
-        ),
-      });
-
-    } catch (err) {
-      console.error('Error dealing cards:', err);
-    }
+  // DEAL CARDS (serialized + atomic guarded transition)
+  socket.on('dealCards', (data) => {
+    handleDealCards(handlerDeps, socket, data);
   });
 
-  // CLEAR ROUND
-  socket.on('clearRound', async (data) => {
-    const { gameId, userId } = data;
-    try {
-      const game = await SrmGame.findById(gameId);
-      if (!game) return;
-
-      // FIX: Verify the user is the dealer
-      if (!userId || game.dealer.toString() !== userId) {
-        socket.emit('betError', { message: 'Only the dealer can clear the round.' });
-        return;
-      }
-
-      // FIX: Only allow clearing when round is in results status
-      if (game.roundStatus !== 'results' && game.roundStatus !== 'resultsPending') {
-        socket.emit('betError', { message: 'Cannot clear round during betting.' });
-        return;
-      }
-
-      // Reset the round
-      game.roundStatus = 'betting';
-      game.dealtCards = [];
-      game.bets = [];
-      await game.save();
-
-      // Notify all clients
-      io.to(`srmGame_${gameId}`).emit('roundCleared');
-    } catch (err) {
-      console.error('Error clearing round:', err);
-    }
+  // CLEAR ROUND (serialized + atomic guarded transition)
+  socket.on('clearRound', (data) => {
+    handleClearRound(handlerDeps, socket, data);
   });
 
   socket.on('disconnect', () => {
